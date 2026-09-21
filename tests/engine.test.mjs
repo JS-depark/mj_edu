@@ -143,6 +143,25 @@ test('last supply is partial and allows a final winning registration', () => {
   inventory(won);
 });
 
+test('reassembly refills only the originally occupied slots, even across gaps', () => {
+  const game = fixture('hand', { groups: [null, ['m2', 'm3', 'm4'], null, ['m6', 'm7', 'm8']], tray: ['m5'] });
+  let edited = beginReassembly(game).state;
+  edited = releaseGroup(edited, 3).state;
+  assert.equal(canFinishReassembly(edited), false);
+  const replacement = edited.tray.filter(tile => tile && [5, 6, 7].includes(tile.rank)).map(tile => tile.id);
+  edited = register(edited, replacement).state;
+  assert.equal(edited.groups[0], null);
+  assert.equal(edited.groups[2], null);
+  assert.deepEqual(edited.groups[3].map(tile => tile.rank), [5, 6, 7]);
+  assert.equal(canFinishReassembly(edited), true);
+  const misplaced = structuredClone(edited);
+  [misplaced.groups[0], misplaced.groups[3]] = [misplaced.groups[3], misplaced.groups[0]];
+  assert.equal(canFinishReassembly(misplaced), false);
+  const committed = finishReassembly(edited).state;
+  assert.equal(committed.tray.filter(Boolean).length, 1);
+  inventory(committed);
+});
+
 test('structural bonuses combine only compatible registered shapes', () => {
   const double = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['m2', 'm3', 'm4'], ['m5', 'm6', 'm7'], ['m5', 'm6', 'm7']], pair: ['m8', 'm8'], status: 'won' });
   const score = scoreGame(double);

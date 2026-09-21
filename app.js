@@ -8,7 +8,7 @@ const PREFS = 'chagok-preferences-v1';
 const RECORDS = 'chagok-records-v1';
 const paths = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 8.6a2.5 2.5 0 0 1 4.8.9c0 1.8-2.4 2-2.4 3.8M12 16h.01"/>',
-  settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/>',
+  settings: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   chevron: '<path d="m9 5 7 7-7 7"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
@@ -27,7 +27,7 @@ const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
 const loaded = safeRead(STORAGE, null);
 let game = validSavedGame(loaded) ? loaded : createGame('shapes', freshSeed());
 const preferences = safeRead(PREFS, {});
-let prefs = { rows: preferences?.rows === 3 ? 3 : 2, numbers: preferences?.numbers !== false };
+let prefs = { numbers: preferences?.numbers !== false };
 let selected = [];
 let hinted = [];
 let feedback = '';
@@ -57,10 +57,12 @@ function tileButton(tile) {
 function slotsMarkup(editing = false) {
   const stage = stageOf(game);
   const slot = (tiles, index, label, isPair = false) => {
+    const required = editing && (isPair ? game.edit.hadPair : Boolean(game.edit.snapshot.groups[index]));
+    const unused = editing && !required;
     const tag = editing && tiles ? 'button' : 'div';
-    const kind = tiles ? (isPair ? '머리' : tiles[0].rank === tiles[1].rank ? '커쯔' : '슌쯔') : label;
-    const access = editing && tiles ? ` data-action="release" data-index="${index}" aria-label="${label} 풀기: ${tiles.map(tileName).join(', ')}"` : '';
-    return `<${tag} class="slot${tiles ? ' filled' : ''}${isPair ? ' pair-slot' : ''}"${access}>${tiles ? miniGroup(tiles) : `<span class="mini-tiles" aria-hidden="true">${Array(isPair ? 2 : 3).fill('<span class="empty-tile"></span>').join('')}</span>`}<span class="slot-label">${kind}</span></${tag}>`;
+    const kind = unused ? '사용 안 함' : tiles ? (isPair ? '머리' : tiles[0].rank === tiles[1].rank ? '커쯔' : '슌쯔') : required ? '다시 채우기' : label;
+    const access = editing && tiles ? ` data-action="release" data-index="${index}" aria-label="${label} 풀기: ${tiles.map(tileName).join(', ')}"` : editing ? ` role="group" aria-label="${label}: ${unused ? '이번 재조립에서 사용하지 않음' : '다시 채워야 함'}"` : '';
+    return `<${tag} class="slot${tiles ? ' filled' : ''}${isPair ? ' pair-slot' : ''}${required ? ' required' : ''}${required && !tiles ? ' needs-refill' : ''}${unused ? ' unused' : ''}"${access}>${tiles ? miniGroup(tiles) : `<span class="mini-tiles" aria-hidden="true">${Array(isPair ? 2 : 3).fill('<span class="empty-tile"></span>').join('')}</span>`}<span class="slot-label">${kind}</span></${tag}>`;
   };
   return `<div class="slots${stage.pair ? ' with-pair' : ''}">${game.groups.map((group, index) => slot(group, index, `몸통 ${index + 1}`)).join('')}${stage.pair ? slot(game.pair, 'pair', '머리', true) : ''}</div>`;
 }
@@ -75,23 +77,18 @@ function selectionMarkup() {
 
 function render() {
   if (activeSheet === 'edit' && game.edit) { renderEdit(); return; }
-  root.dataset.rows = prefs.rows;
-  const tableScroll = root.querySelector('.table-zone')?.scrollTop || 0;
   const stage = stageOf(game);
   const vacancies = game.tray.filter(tile => !tile).length;
   const match = registration(game, selected);
   const last = !game.wall.length && game.status === 'playing';
   root.innerHTML = `
-    <header class="topbar"><div class="brand"><img src="./favicon.svg" alt=""><span class="brand-name">차곡</span><span class="brand-small">마작 퍼즐</span></div><div class="top-actions"><button class="icon-button" data-action="help" aria-label="놀이 방법">${icon('help')}</button><button class="icon-button" data-action="settings" aria-label="화면 설정">${icon('settings')}</button></div></header>
-    <div class="table-zone"><section aria-label="이번 단계의 목표"><div class="lesson"><div><p class="eyebrow">STEP ${stage.number} <span aria-hidden="true">/</span> ${stage.tag}</p><button class="lesson-link" data-action="stages" aria-label="단계 선택, 현재 ${stage.title}"><h1>${stage.title}${icon('down')}</h1></button></div><div class="wall${game.wall.length <= 6 ? ' low' : ''}" aria-label="남은 패 ${game.wall.length}장"><strong>${game.wall.length}</strong><span>남은 패</span></div></div><p class="lesson-description">${stage.description}</p><div class="lesson-progress" aria-label="${occupied(game)} / ${stage.bodies + Number(stage.pair)} 묶음 완성">${Array.from({ length: stage.bodies + Number(stage.pair) }, (_, i) => `<span class="${i < occupied(game) ? 'filled' : ''}"></span>`).join('')}</div></section>
-    <section class="workbench" aria-label="등록한 묶음"><div class="section-heading"><h2>작업대<span class="count">${occupied(game)} / ${stage.bodies + Number(stage.pair)}</span></h2><button class="text-button" data-action="reassemble" ${!occupied(game) || game.status !== 'playing' ? 'disabled' : ''}>${icon('rebuild')}재조립</button></div>${slotsMarkup()}</section></div>
+    <section class="lesson-panel" aria-label="이번 단계의 목표"><div class="lesson"><button class="lesson-link" data-action="stages" aria-label="단계 선택, 현재 ${stage.title}"><span class="eyebrow">${stage.number} · ${stage.tag}</span><h1>${stage.title}${icon('down')}</h1></button><div class="wall${game.wall.length <= 6 ? ' low' : ''}" aria-label="남은 패 ${game.wall.length}장"><strong>${game.wall.length}</strong><span>남은 패</span></div><button class="icon-button menu-button" data-action="settings" aria-label="게임 메뉴">${icon('settings')}</button></div><p class="lesson-description">${stage.description}</p></section>
+    <section class="workbench" aria-label="등록한 묶음"><div class="section-heading"><h2>작업대<span class="count">${occupied(game)} / ${stage.bodies + Number(stage.pair)}</span></h2><button class="text-button" data-action="reassemble" ${!occupied(game) || game.status !== 'playing' ? 'disabled' : ''}>${icon('rebuild')}재조립</button></div>${slotsMarkup()}</section>
     <section class="river-section" aria-label="버림패"><h2>버림패<span class="count">${game.discards.length}장</span></h2><div class="river">${game.discards.length ? `${game.discards.length > 7 ? `<span class="river-more">+${game.discards.length - 7}</span>` : ''}${game.discards.slice(-7).map(miniTile).join('')}` : '<p class="river-empty">버린 패가 차례대로 쌓여요.</p>'}</div><button class="icon-button" data-action="river" aria-label="버림패 순서 보기" ${!game.discards.length ? 'disabled' : ''}>${icon('chevron')}</button></section>
-    <section class="play-zone" aria-label="패 고르기"><div class="section-heading tray-heading"><h2>공급대<span class="count">${game.tray.filter(Boolean).length} / 13</span></h2><div class="tray-tools"><button class="text-button" data-action="sort" aria-label="무늬와 숫자순으로 정렬">${icon('sort')}정렬</button><div class="layout-switch" aria-label="공급대 배치"><button data-action="rows" data-rows="2" class="${prefs.rows === 2 ? 'active' : ''}" aria-pressed="${prefs.rows === 2}">2줄</button><button data-action="rows" data-rows="3" class="${prefs.rows === 3 ? 'active' : ''}" aria-pressed="${prefs.rows === 3}">3줄</button></div></div></div>
-    <div class="tile-grid${prefs.rows === 3 ? ' three-rows' : ''}" aria-label="공급대의 패">${game.tray.map(tile => tile ? tileButton(tile) : '<div class="tile-space" aria-label="공급할 빈자리"><span>＋</span></div>').join('')}</div>
-    ${selectionMarkup()}
+    <section class="play-zone" aria-label="패 고르기"><div class="section-heading tray-heading">${selected.length || feedback ? selectionMarkup() : `<h2>공급대<span class="count">${game.tray.filter(Boolean).length} / 13</span></h2><span class="tray-prompt">${last ? '마지막 조합을 확인해요' : '패를 골라 주세요'}</span>`}${!selected.length ? `<button class="text-button sort-button" data-action="sort" aria-label="무늬와 숫자순으로 정렬">${icon('sort')}정렬</button>` : ''}</div>
+    <div class="tile-grid" aria-label="공급대의 패, ${game.tray.filter(Boolean).length}장">${game.tray.map(tile => tile ? tileButton(tile) : '<div class="tile-space" aria-label="공급할 빈자리"><span>＋</span></div>').join('')}</div>
     ${game.status === 'playing' ? `<div class="controls gameplay-controls"><button class="action primary register" data-action="register" aria-label="${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록하기` : '묶음 등록하기'}" ${!match.ok ? 'disabled' : ''}>${icon('check')}${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록` : '묶음 등록'}</button><button class="action secondary" data-action="exchange" aria-label="한 장 버림·쯔모" ${selected.length !== 1 || !game.wall.length ? 'disabled' : ''}>버림·쯔모</button>${last ? '<button class="action secondary" data-action="end" aria-label="이번 판 마치기">판 마치기</button>' : `<button class="action secondary" data-action="supply" aria-label="${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급받기` : '공급받기'}" ${!vacancies ? 'disabled' : ''}>${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급` : '공급받기'}</button>`}</div>` : `<div class="controls"><button class="action primary full" data-action="result">결과 보기 ${icon('chevron')}</button><button class="action secondary full" data-action="restart">${icon('rebuild')}새 패로 다시 하기</button></div>`}
-    ${last ? '<p class="end-note">마지막 패예요. 남은 조합을 등록하거나 재조립한 뒤 판을 마쳐 주세요.</p>' : `<p class="control-caption">${stage.scored ? '남은 패를 아끼고, 새로운 역의 모양을 발견해 보세요.' : '시간 제한 없이, 한 묶음씩 천천히.'}</p>`}</section>`;
-  root.querySelector('.table-zone').scrollTop = tableScroll;
+    </section>`;
   if (activeSheet === 'edit') renderEdit();
 }
 
@@ -119,13 +116,15 @@ function startStage(stageId) {
   announce.textContent = `${stageOf(game).title}, 새 패로 시작했어요.`;
 }
 
-function sheetFrame(title, content, closeAction = 'close') {
-  return `<div class="sheet-inner"><div class="sheet-handle" aria-hidden="true"></div><div class="sheet-header"><h2 id="sheet-title" tabindex="-1">${title}</h2><button class="icon-button" data-action="${closeAction}" aria-label="${closeAction === 'cancel-edit' ? '재조립 취소' : '닫기'}">${icon('close')}</button></div>${content}</div>`;
+function sheetFrame(title, content, closeAction = 'close', footer = '') {
+  return `<div class="sheet-inner"><div class="sheet-header"><h2 id="sheet-title" tabindex="-1">${title}</h2><button class="icon-button" data-action="${closeAction}" aria-label="${closeAction === 'cancel-edit' ? '재조립 취소' : '닫기'}">${icon('close')}</button></div><div class="sheet-content">${content}</div>${footer ? `<div class="sheet-footer">${footer}</div>` : ''}</div>`;
 }
 
 function openSheet(kind) {
   if (!sheet.open) focusBeforeSheet = document.activeElement?.dataset?.action;
   activeSheet = kind;
+  sheet.dataset.view = kind;
+  sheet.classList.toggle('expanded', kind === 'edit' || kind === 'help');
   if (kind === 'edit') renderEdit();
   else if (kind === 'help') renderHelp();
   else if (kind === 'stages') renderStages();
@@ -150,7 +149,7 @@ function renderHelp() {
     { name: '커쯔', copy: '무늬와 숫자가 같은 패 3장', ranks: [5, 5, 5] },
     ...(stageOf(game).pair ? [{ name: '머리', copy: '무늬와 숫자가 같은 패 2장', ranks: [7, 7] }] : []),
   ];
-  sheet.innerHTML = sheetFrame('한 묶음씩, 차곡차곡', `<p class="sheet-intro">슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.</p>${examples.map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>공급대에서 패를 고르고 <strong>묶음 등록하기</strong>를 눌러요.</li><li>등록해서 생긴 빈자리는 <strong>공급받기</strong>로 채워요.</li><li>패 한 장을 고르면 <strong>한 장 버림·쯔모</strong>로 바꿀 수 있어요. 버린 패는 다시 돌아오지 않아요.</li><li>등록한 패는 <strong>재조립</strong>으로 바꿔도 돼요. 시작할 때와 같은 수의 몸통과 머리를 채워야 끝낼 수 있어요.</li></ol><p class="sheet-intro">${stageOf(game).note}. 이번 연습에는 자패·타가·울기가 없어요. 작업대에 묶음을 등록하는 것은 치·펑과 달라요.</p><div class="sheet-actions"><button class="action primary" data-action="hint">${icon('spark')}지금 만들 수 있는 묶음 보기</button><button class="action secondary" data-action="close">직접 해볼게요</button></div>`);
+  sheet.innerHTML = sheetFrame('놀이 방법', `<p class="sheet-intro">슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.</p>${examples.map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>패를 골라 <strong>묶음 등록</strong>을 눌러요.</li><li>빈칸은 <strong>공급받기</strong>로 채워요.</li><li>한 장을 고르면 <strong>버림·쯔모</strong>로 바꿔요.</li><li><strong>재조립</strong>에서는 강조된 슬롯을 다시 채워요.</li></ol><details class="more-help"><summary>패산과 연습 규칙</summary><p>${stageOf(game).note}. 버린 패는 다시 섞지 않아요. 마지막 패를 뽑은 뒤 조합을 확인하고 판을 마쳐요.</p><p>재조립은 원래의 몸통·머리 수를 유지하며, 공급이나 버림은 할 수 없어요. 이번 연습에는 자패·타가·울기가 없어요. 작업대 등록은 치·펑과 달라요.</p></details>`, 'close', '<div class="controls"><button class="action secondary" data-action="hint" aria-label="지금 만들 수 있는 묶음 보기">묶음 힌트</button><button class="action primary" data-action="close">계속하기</button></div>');
 }
 
 function renderStages() {
@@ -159,7 +158,7 @@ function renderStages() {
 }
 
 function renderSettings() {
-  sheet.innerHTML = sheetFrame('손에 맞게', `<p class="sheet-intro">실제 휴대폰에서 패 크기와 엄지손가락의 이동 거리를 비교해 보세요.</p><div class="settings-row"><span>공급대 배치<small>2줄은 한눈에, 3줄은 더 큰 패로</small></span><div class="layout-switch"><button data-action="rows" data-rows="2" class="${prefs.rows === 2 ? 'active' : ''}" aria-pressed="${prefs.rows === 2}">2줄</button><button data-action="rows" data-rows="3" class="${prefs.rows === 3 ? 'active' : ''}" aria-pressed="${prefs.rows === 3}">3줄</button></div></div><div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="sheet-actions"><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button><button class="action primary" data-action="close">계속하기</button></div><p class="credit">진행 상황은 이 브라우저에 저장돼요.<br>차곡 · 조작을 살펴보는 첫 번째 버전<br>패 그림: <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`);
+  sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="sheet-actions"><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button><button class="action primary" data-action="close">계속하기</button></div><p class="credit">진행 상황은 이 브라우저에 저장돼요.<br>차곡 · 마작 퍼즐<br>패 그림: <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`);
 }
 
 function renderRiver() {
@@ -176,12 +175,14 @@ function renderEnd() {
 
 function renderEdit() {
   if (!game.edit) return;
-  const scroll = sheet.scrollTop;
+  const scroll = sheet.querySelector('.edit-pool')?.scrollTop || 0;
   const match = registration(game, selected);
   const bodyCount = game.groups.filter(Boolean).length;
   const required = game.edit;
-  sheet.innerHTML = sheetFrame('묶음을 다시 조립해요', `<p class="sheet-intro">풀고 싶은 묶음을 누르세요. 공급대의 패와 바꿔 조합할 수 있어요.</p><div class="edit-slots">${slotsMarkup(true)}</div><p class="edit-summary">몸통 ${bodyCount} / ${required.bodyCount}${required.hadPair ? ` · 머리 ${Number(Boolean(game.pair))} / 1` : ''} <span class="count">같은 수를 채우면 완료</span></p><div class="tile-grid edit-tray">${game.tray.filter(Boolean).map(tileButton).join('')}</div>${selectionMarkup()}<div class="edit-footer"><div class="controls"><button class="action primary full" data-action="register" ${!match.ok ? 'disabled' : ''}>${icon('check')}선택한 묶음 등록</button><button class="action secondary" data-action="cancel-edit">원래대로</button><button class="action secondary" data-action="finish-edit" ${!canFinishReassembly(game) ? 'disabled' : ''}>재조립 완료</button></div><p class="control-caption">재조립 중에는 공급하거나 버릴 수 없어요.</p></div>`, 'cancel-edit');
-  sheet.scrollTop = scroll;
+  const tiles = game.tray.filter(Boolean);
+  const rows = Math.max(1, Math.ceil(tiles.length / 7));
+  sheet.innerHTML = sheetFrame('재조립', `<p class="sheet-intro">묶음을 눌러 풀고, 강조된 자리를 채워요.</p><div class="edit-slots">${slotsMarkup(true)}</div><p class="sr-only" role="status">몸통 ${bodyCount} / ${required.bodyCount}${required.hadPair ? ` · 머리 ${Number(Boolean(game.pair))} / 1` : ''}</p>${selectionMarkup()}<div class="edit-pool"><div class="tile-grid edit-tray" style="--pool-rows:${rows}" aria-label="재조립할 패 ${tiles.length}장">${tiles.map(tileButton).join('')}</div></div>`, 'cancel-edit', `<div class="controls edit-controls"><button class="action secondary" data-action="cancel-edit">원래대로</button><button class="action primary" data-action="register" aria-label="선택한 묶음 등록" ${!match.ok ? 'disabled' : ''}>묶음 등록</button><button class="action secondary" data-action="finish-edit" aria-label="재조립 완료" ${!canFinishReassembly(game) ? 'disabled' : ''}>완료</button></div>`);
+  sheet.querySelector('.edit-pool').scrollTop = scroll;
 }
 
 function renderResult() {
@@ -210,7 +211,6 @@ function handleClick(event) {
   else if (action === 'supply') apply(supply(game));
   else if (action === 'exchange') apply(exchange(game, selected[0]));
   else if (action === 'sort') { game = sortTray(game); selected = []; hinted = []; say('무늬와 숫자순으로 정렬했어요.'); remember(); render(); }
-  else if (action === 'rows') { prefs.rows = Number(button.dataset.rows); safeWrite(PREFS, prefs); render(); if (activeSheet === 'settings') renderSettings(); }
   else if (action === 'numbers') { prefs.numbers = !prefs.numbers; safeWrite(PREFS, prefs); render(); renderSettings(); }
   else if (action === 'reassemble') {
     const result = beginReassembly(game);

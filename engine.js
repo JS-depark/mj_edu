@@ -63,7 +63,10 @@ export function register(state, ids) {
   const next = structuredClone(state);
   next.tray = next.tray.map(tile => ids.includes(tile?.id) ? null : tile);
   if (match.kind === 'pair') next.pair = match.tiles;
-  else next.groups[next.groups.indexOf(null)] = match.tiles;
+  else {
+    const index = next.groups.findIndex((group, position) => !group && (!next.edit || next.edit.snapshot.groups[position]));
+    next.groups[index] = match.tiles;
+  }
   next.exchangeStreak = 0;
   return { state: completeIfReady(next), ok: true, message: `${match.message.split(' · ')[0]}를 등록했어요.` };
 }
@@ -119,7 +122,7 @@ export function releaseGroup(state, index) {
 }
 
 export function canFinishReassembly(state) {
-  return Boolean(state.edit && state.groups.filter(Boolean).length === state.edit.bodyCount && Boolean(state.pair) === state.edit.hadPair && state.tray.filter(Boolean).length === state.edit.trayCount);
+  return Boolean(state.edit && state.groups.every((group, index) => Boolean(group) === Boolean(state.edit.snapshot.groups[index])) && Boolean(state.pair) === state.edit.hadPair && state.tray.filter(Boolean).length === state.edit.trayCount);
 }
 
 export function finishReassembly(state) {
