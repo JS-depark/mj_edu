@@ -1,9 +1,31 @@
 export const STAGES = [
-  { id: 'shapes', number: '01', title: '몸통 만들기', tag: '모양 익히기', description: '패 3장을 묶어 몸통 2개를 만들어 보세요.', bodies: 2, pair: false, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' },
-  { id: 'hand', number: '02', title: '한 손 완성하기', tag: '구조 익히기', description: '몸통 4개와 같은 패 2장인 머리를 만들어요.', bodies: 4, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' },
-  { id: 'honors', number: '03', title: '자패 익히기', tag: '일곱 자패', description: '같은 자패 3장으로 몸통 2개를 만들어요.', bodies: 2, pair: false, suits: ['z'], scored: false, note: '자패 28장 · 점수 없는 연습' },
-  { id: 'tanyao', number: '04', title: '첫 번째 역, 탕야오', tag: '역 만들기', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 남은 패 + 발견 보너스' },
+  { id: 'sequences', number: '01', title: '슌쯔 두 개 만들기', tag: '기초 · 연속 숫자', description: '같은 무늬의 연속 숫자 3장, 슌쯔를 2개 만들어요.', bodies: 2, pair: false, bodyKind: 'sequence', suits: ['m'], scored: false, note: '만수 36장 · 슌쯔만 등록' },
+  { id: 'triplets', number: '02', title: '커쯔 두 개 만들기', tag: '기초 · 같은 패', description: '무늬와 숫자가 같은 패 3장, 커쯔를 2개 만들어요.', bodies: 2, pair: false, bodyKind: 'triplet', suits: ['m'], scored: false, note: '만수 36장 · 커쯔만 등록' },
+  { id: 'honors', number: '03', title: '자패로 커쯔 만들기', tag: '기초 · 일곱 자패', description: '같은 자패 3장으로 커쯔 2개를 만들어요.', bodies: 2, pair: false, bodyKind: 'triplet', suits: ['z'], scored: false, note: '자패 28장 · 자패는 이어지지 않아요' },
+  { id: 'pairs', number: '04', title: '머리 하나 더하기', tag: '기초 · 같은 패 두 장', description: '몸통 2개와 같은 패 2장인 머리 1개를 만들어요.', bodies: 2, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 몸통 2개 + 머리' },
+  { id: 'mixed', number: '05', title: '세 무늬 구분하기', tag: '기초 · 만수·삭수·통수', description: '한 묶음은 같은 무늬로! 몸통 2개와 머리를 만들어요.', bodies: 2, pair: true, suits: ['m', 'p', 's'], scored: false, note: '수패 108장 · 무늬를 섞지 않아요' },
+  { id: 'hand', number: '06', title: '한 손 완성하기', tag: '기초 · 네 몸통과 머리', description: '몸통 4개와 머리 1개, 총 14장을 완성해요.', bodies: 4, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 한 손의 구조' },
+  { id: 'tanyao', number: '07', title: '첫 번째 역, 탕야오', tag: '역 만들기', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 여기부터 점수 기록' },
 ];
+
+// Old mixed-body lessons can still be resumed without redefining their rules.
+const LEGACY_STAGES = [{ id: 'shapes', number: '01', title: '몸통 만들기', tag: '이전 모양 연습', description: '슌쯔 또는 커쯔로 몸통 2개를 만들어요.', bodies: 2, pair: false, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' }];
+export const SCORE_VERSION = 2;
+// Closed-hand values are the learning reference; null means closed-only.
+export const YAKU_VALUES = {
+  tanyao: { name: '탕야오', han: 1, openHan: 1 },
+  iipeikou: { name: '이페코', han: 1, openHan: null },
+  ryanpeikou: { name: '량페코', han: 3, openHan: null },
+  toitoi: { name: '또이또이', han: 2, openHan: 2 },
+  honitsu: { name: '혼일색', han: 3, openHan: 2 },
+  chinitsu: { name: '청일색', han: 6, openHan: 5 },
+  ittsu: { name: '일기통관', han: 2, openHan: 1 },
+  sanshokuDoujun: { name: '삼색동순', han: 2, openHan: 1 },
+  chanta: { name: '찬타', han: 2, openHan: 1 },
+  junchan: { name: '준찬타', han: 3, openHan: 2 },
+  honroutou: { name: '혼노두', han: 2, openHan: 2 },
+  sanshokuDoukou: { name: '삼색동각', han: 2, openHan: 2 },
+};
 
 export const HONORS = [
   { name: '동', asset: 'Ton' }, { name: '남', asset: 'Nan' },
@@ -16,7 +38,7 @@ export const tileAsset = tile => tile.suit === 'z' ? HONORS[tile.rank - 1]?.asse
 export const tileOrder = (a, b) => 'mpsz'.indexOf(a.suit) - 'mpsz'.indexOf(b.suit) || a.rank - b.rank || a.id.localeCompare(b.id);
 export const isSimple = tile => tile.suit !== 'z' && tile.rank >= 2 && tile.rank <= 8;
 export const makeTiles = suits => suits.flatMap(suit => Array.from({ length: suit === 'z' ? 7 : 9 }, (_, rank) => Array.from({ length: 4 }, (_, copy) => ({ id: `${suit}${rank + 1}-${copy}`, suit, rank: rank + 1 }))).flat());
-export const stageOf = state => STAGES.find(stage => stage.id === state.stageId);
+export const stageOf = state => [...STAGES, ...LEGACY_STAGES].find(stage => stage.id === state?.stageId);
 export const occupied = state => state.groups.filter(Boolean).length + Number(Boolean(state.pair));
 
 export function seededRandom(seed) {
@@ -24,8 +46,8 @@ export function seededRandom(seed) {
   return () => { value ^= value << 13; value ^= value >>> 17; value ^= value << 5; return (value >>> 0) / 4294967296; };
 }
 
-export function createGame(stageId = 'shapes', seed = Date.now()) {
-  const stage = STAGES.find(item => item.id === stageId) || STAGES[0];
+export function createGame(stageId = 'sequences', seed = Date.now()) {
+  const stage = stageOf({ stageId }) || STAGES[0];
   const wall = makeTiles(stage.suits);
   const random = seededRandom(seed);
   for (let index = wall.length - 1; index > 0; index--) {
@@ -52,6 +74,7 @@ export function registration(state, ids) {
   const kind = classify(tiles);
   if (!kind) return { ok: false, message: ids.length === 1 ? '한 장은 버리고 뽑을 수 있어요.' : tiles.some(tile => tile?.suit === 'z') ? '자패는 같은 패끼리만 묶을 수 있어요.' : '연속 숫자 3장 또는 같은 패를 골라 주세요.' };
   const stage = stageOf(state);
+  if (stage.bodyKind && kind !== 'pair' && kind !== stage.bodyKind) return { ok: false, message: stage.bodyKind === 'sequence' ? '이번에는 연속 숫자 3장인 슌쯔를 연습해요.' : '이번에는 같은 패 3장인 커쯔를 연습해요.' };
   if (stage.id === 'tanyao' && tiles.some(tile => !isSimple(tile))) return { ok: false, message: '탕야오에는 1·9와 자패를 사용할 수 없어요.' };
   if (kind === 'pair' && (!stage.pair || state.pair || (state.edit && !state.edit.hadPair))) return { ok: false, message: !stage.pair ? '이번에는 3장짜리 몸통을 만들어요.' : '머리 자리는 이미 채웠어요.' };
   const maxBodies = state.edit ? state.edit.bodyCount : stage.bodies;
@@ -172,15 +195,17 @@ export function scoreGame(state) {
   for (const group of sequences) { const key = group.map(tile => `${tile.suit}${tile.rank}`).join(); bySequence.set(key, (bySequence.get(key) || 0) + 1); }
   const identicalPairs = [...bySequence.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
   const bonuses = [];
-  if (identicalPairs >= 2) bonuses.push({ name: '량페코 모양', points: 300, description: '똑같은 슌쯔 두 묶음이 두 쌍 있어요.' });
-  else if (identicalPairs === 1) bonuses.push({ name: '이페코 모양', points: 150, description: '같은 무늬, 같은 숫자의 슌쯔가 두 묶음이에요.' });
-  if (groups.every(group => classify(group) === 'triplet')) bonuses.push({ name: '또이또이 모양', points: 250, description: '네 몸통을 모두 같은 패 세 장인 커쯔로 만들었어요.' });
+  const add = (id, description) => bonuses.push({ id, ...YAKU_VALUES[id], points: YAKU_VALUES[id].han * 10, description });
+  if (identicalPairs >= 2) add('ryanpeikou', '같은 슌쯔 두 묶음이 두 쌍 있어요. 이페코와 중복해서 세지 않아요.');
+  else if (identicalPairs === 1) add('iipeikou', '같은 무늬, 같은 숫자의 슌쯔가 두 묶음이에요.');
+  if (groups.every(group => classify(group) === 'triplet')) add('toitoi', '네 몸통을 모두 같은 패 세 장인 커쯔로 만들었어요.');
   const all = [...groups.flat(), ...state.pair];
-  if (all.every(tile => tile.suit !== 'z') && new Set(all.map(tile => tile.suit)).size === 1) bonuses.push({ name: '청일색 모양', points: 300, description: '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.' });
-  if (sequences.some(group => ['m', 'p', 's'].every(suit => sequences.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) bonuses.push({ name: '삼색동순 모양', points: 200, description: '만·통·삭으로 같은 숫자의 슌쯔를 만들었어요.' });
+  if (all.every(tile => tile.suit !== 'z') && new Set(all.map(tile => tile.suit)).size === 1) add('chinitsu', '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.');
+  if (sequences.some(group => ['m', 'p', 's'].every(suit => sequences.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) add('sanshokuDoujun', '만·통·삭으로 같은 숫자의 슌쯔를 만들었어요.');
   const base = 1000;
   const remaining = state.wall.length * 10;
-  return { base, remaining, bonuses, total: base + remaining + bonuses.reduce((sum, bonus) => sum + bonus.points, 0) };
+  const bonusHan = bonuses.reduce((sum, bonus) => sum + bonus.han, 0);
+  return { version: SCORE_VERSION, base, remaining, bonuses, bonusHan, total: base + remaining + bonusHan * 10 };
 }
 
 export function validSavedGame(state) {
@@ -189,6 +214,7 @@ export function validSavedGame(state) {
     if (!stage || state.version !== 1 || !['playing', 'won', 'lost'].includes(state.status) || state.edit || state.tray.length !== 13 || state.groups.length !== stage.bodies) return false;
     if (!Array.isArray(state.wall) || !Array.isArray(state.discards)) return false;
     if (state.groups.some(group => group && !['sequence', 'triplet'].includes(classify(group)))) return false;
+    if (stage.bodyKind && state.groups.some(group => group && classify(group) !== stage.bodyKind)) return false;
     if (state.pair && (!stage.pair || classify(state.pair) !== 'pair')) return false;
     if (stage.id === 'tanyao' && [...state.groups.filter(Boolean).flat(), ...(state.pair || [])].some(tile => !isSimple(tile))) return false;
     const all = [...state.wall, ...state.tray.filter(Boolean), ...state.groups.filter(Boolean).flat(), ...(state.pair || []), ...state.discards];

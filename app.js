@@ -1,4 +1,4 @@
-import { STAGES, HONORS, tileName, tileAsset, stageOf, occupied, createGame, registration, register, supply, exchange, sortTray, beginReassembly, releaseGroup, canFinishReassembly, finishReassembly, cancelReassembly, endRound, findGroup, scoreGame, validSavedGame } from './engine.js';
+import { STAGES, HONORS, SCORE_VERSION, tileName, tileAsset, stageOf, occupied, createGame, registration, register, supply, exchange, sortTray, beginReassembly, releaseGroup, canFinishReassembly, finishReassembly, cancelReassembly, endRound, findGroup, scoreGame, validSavedGame } from './engine.js';
 
 const root = document.querySelector('#app');
 const sheet = document.querySelector('#sheet');
@@ -25,9 +25,10 @@ const safeRead = (key, fallback) => { try { return JSON.parse(localStorage.getIt
 const safeWrite = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* The current round remains playable without storage. */ } };
 const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
 const loaded = safeRead(STORAGE, null);
-let game = validSavedGame(loaded) ? loaded : createGame('shapes', freshSeed());
+const resuming = validSavedGame(loaded);
+let game = resuming ? loaded : createGame('sequences', freshSeed());
 const preferences = safeRead(PREFS, {});
-let prefs = { numbers: preferences?.numbers !== false, autoSort: preferences?.autoSort === true };
+let prefs = { numbers: preferences?.numbers !== false, autoSort: preferences?.autoSort === true, introSeen: preferences?.introSeen === true, lessonsSeen: Array.isArray(preferences?.lessonsSeen) ? preferences.lessonsSeen : [] };
 if (prefs.autoSort) game = sortTray(game);
 let selected = [];
 let hinted = [];
@@ -38,6 +39,8 @@ let focusBeforeSheet = null;
 let riverPage = null;
 let riverPageSize = 10;
 let resultBonus = null;
+let introPage = 0;
+let stagesPage = 0;
 const riverObserver = new ResizeObserver(() => renderRiverBoard());
 
 function remember() { safeWrite(STORAGE, game.edit ? game.edit.snapshot : game); }
@@ -45,8 +48,9 @@ function recordWin() {
   if (game.status !== 'won') return;
   const stored = safeRead(RECORDS, {});
   const records = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-  const score = scoreGame(game)?.total || 0;
-  records[game.stageId] = { completed: true, best: Math.max(Number(records[game.stageId]?.best) || 0, score) };
+  const score = scoreGame(game);
+  const previous = records[game.stageId] || {};
+  records[game.stageId] = { ...previous, completed: true, ...(score ? { bestByScoreVersion: { ...previous.bestByScoreVersion, [SCORE_VERSION]: Math.max(Number(previous.bestByScoreVersion?.[SCORE_VERSION]) || 0, score.total) } } : {}) };
   safeWrite(RECORDS, records);
 }
 
@@ -69,7 +73,7 @@ function slotsMarkup(editing = false) {
     const access = editing && tiles ? ` data-action="release" data-index="${index}" aria-label="${label} 풀기: ${tiles.map(tileName).join(', ')}"` : editing ? ` role="group" aria-label="${label}: ${unused ? '이번 재조립에서 사용하지 않음' : '다시 채워야 함'}"` : '';
     return `<${tag} class="slot${tiles ? ' filled' : ''}${isPair ? ' pair-slot' : ''}${required ? ' required' : ''}${required && !tiles ? ' needs-refill' : ''}${unused ? ' unused' : ''}"${access}>${tiles ? miniGroup(tiles) : `<span class="mini-tiles" aria-hidden="true">${Array(isPair ? 2 : 3).fill('<span class="empty-tile"></span>').join('')}</span>`}<span class="slot-label">${kind}</span></${tag}>`;
   };
-  return `<div class="slots${stage.pair ? ' with-pair' : ''}">${game.groups.map((group, index) => slot(group, index, `몸통 ${index + 1}`)).join('')}${stage.pair ? slot(game.pair, 'pair', '머리', true) : ''}</div>`;
+  return `<div class="slots${stage.pair ? ' with-pair' : ''}${stage.bodies === 2 ? ' small-hand' : ''}">${game.groups.map((group, index) => slot(group, index, `몸통 ${index + 1}`)).join('')}${stage.pair ? slot(game.pair, 'pair', '머리', true) : ''}</div>`;
 }
 
 function selectionMarkup() {
@@ -103,7 +107,7 @@ function renderRiverBoard() {
   const field = root.querySelector('.river-field');
   if (!field) return;
   // Tiles keep a readable size; surplus history uses pages, never a scroll strip.
-  const capacity = Math.max(1, Math.floor((field.clientHeight + 4) / 40)) * 10;
+  const capacity = Math.max(1, Math.min(4, Math.floor((field.clientHeight + 4) / 38))) * 10;
   if (capacity !== riverPageSize) { riverPageSize = capacity; riverPage = null; }
   const pages = Math.max(1, Math.ceil(game.discards.length / capacity));
   const page = riverPage === null ? pages - 1 : Math.min(riverPage, pages - 1);
@@ -137,6 +141,7 @@ function startStage(stageId) {
   selected = []; hinted = []; feedback = ''; feedbackError = false;
   closeSheet(); remember(); render();
   announce.textContent = `${stageOf(game).title}, 새 패로 시작했어요.`;
+  if (!prefs.lessonsSeen.includes(game.stageId)) openSheet('lesson');
 }
 
 function sheetFrame(title, content, closeAction = 'close', footer = '') {
@@ -147,8 +152,10 @@ function openSheet(kind) {
   if (!sheet.open) focusBeforeSheet = document.activeElement?.dataset?.action;
   activeSheet = kind;
   if (kind === 'result') resultBonus = null;
+  if (kind === 'intro') introPage = 0;
+  if (kind === 'stages') stagesPage = Math.floor(Math.max(0, STAGES.findIndex(stage => stage.id === game.stageId)) / 3);
   sheet.dataset.view = kind;
-  sheet.classList.toggle('expanded', ['edit', 'help', 'result', 'settings', 'stages'].includes(kind));
+  sheet.classList.toggle('expanded', ['edit', 'help', 'result', 'settings', 'stages', 'intro', 'lesson'].includes(kind));
   if (kind === 'edit') renderEdit();
   else if (kind === 'help') renderHelp();
   else if (kind === 'stages') renderStages();
@@ -156,33 +163,63 @@ function openSheet(kind) {
   else if (kind === 'restart') renderRestart();
   else if (kind === 'end') renderEnd();
   else if (kind === 'result') renderResult();
+  else if (kind === 'intro') renderIntro();
+  else if (kind === 'lesson') renderLesson();
   if (!sheet.open) sheet.showModal();
   sheet.querySelector('#sheet-title')?.focus({ preventScroll: true });
 }
 
 function closeSheet() {
+  if (activeSheet === 'lesson' && !prefs.lessonsSeen.includes(game.stageId)) { prefs.lessonsSeen.push(game.stageId); safeWrite(PREFS, prefs); }
   activeSheet = null;
   if (sheet.open) sheet.close();
   root.querySelector(`[data-action="${focusBeforeSheet}"]`)?.focus({ preventScroll: true });
 }
 
+function renderIntro() {
+  const numeric = introPage === 0;
+  const row = (suit, name) => `<section class="tile-family"><h3>${name}<small>1〜9</small></h3><div class="intro-tiles">${Array.from({ length: 9 }, (_, i) => `<figure>${miniTile({ suit, rank: i + 1 })}<figcaption>${i + 1}</figcaption></figure>`).join('')}</div></section>`;
+  const content = numeric ? `<p class="eyebrow">패 알아보기 · 1 / 2</p><h3 class="intro-title">세 무늬, 각각 1부터 9까지</h3><p class="sheet-intro">숫자가 있는 패를 ‘수패’라고 해요.<br>같은 숫자라도 무늬가 다르면 다른 패예요.</p>${row('m', '만수')}${row('s', '삭수')}${row('p', '통수')}<p class="intro-tip">1삭은 새 그림이에요. 같은 패는 각각 4장씩 있어요.</p>` : `<p class="eyebrow">패 알아보기 · 2 / 2</p><h3 class="intro-title">숫자가 없는 일곱 자패</h3><p class="sheet-intro">동·남·서·북은 풍패, 백·발·중은 삼원패예요.<br>백은 그림이 없는 하얀 패예요.</p><div class="intro-honors">${HONORS.map((item, i) => `<figure>${miniTile({ suit: 'z', rank: i + 1 })}<figcaption>${item.name}</figcaption></figure>`).join('')}</div><div class="intro-callout"><strong>자패에는 숫자 순서가 없어요.</strong><p>동·남·서를 이어도 슌쯔가 되지 않아요.<br>같은 패끼리 모으는 방법을 곧 연습할 거예요.</p></div><p class="intro-tip">수패 27종 + 자패 7종 = 34종<br>각 4장씩, 기본 한 세트는 136장이에요.</p>`;
+  sheet.innerHTML = sheetFrame('마작패와 첫인사', content, 'intro-finish', numeric ? '<button class="action primary full" data-action="intro-next">자패도 알아보기 →</button>' : '<div class="controls"><button class="action secondary" data-action="intro-prev">수패 다시 보기</button><button class="action primary" data-action="intro-finish">연습으로 가기</button></div>');
+}
+
+function finishIntro() {
+  prefs.introSeen = true; safeWrite(PREFS, prefs); closeSheet();
+  if (game.status === 'playing' && !prefs.lessonsSeen.includes(game.stageId)) openSheet('lesson');
+}
+
+function renderLesson() {
+  const stage = stageOf(game);
+  const lessons = {
+    sequences: { title: '연속된 숫자 세 장, 슌쯔', tiles: ['m2','m3','m4'], rule: '같은 무늬의 2·3·4처럼 이어지는 세 장이에요. 이런 묶음을 ‘몸통’이라고 해요.', caution: '8·9·1은 이어지지 않아요. 이번에는 슌쯔만 2개 만들어요.', tip: '패 세 장을 누르고 ‘몸통 등록’을 눌러요. 빈자리는 ‘공급’으로 채워요.' },
+    triplets: { title: '똑같은 패 세 장, 커쯔', tiles: ['m5','m5','m5'], rule: '무늬와 숫자가 모두 같은 세 장이에요. 커쯔도 몸통의 한 종류예요.', caution: '같은 패 두 장은 아직 커쯔가 아니에요. 이번에는 커쯔만 2개 만들어요.', tip: '묶을 패가 없다면 한 장을 골라 ‘버림·쯔모’를 눌러요. 버린 패는 돌아오지 않아요.' },
+    honors: { title: '자패도 같은 것끼리 모아요', tiles: ['z7','z7','z7'], rule: '중·중·중처럼 같은 자패 세 장도 커쯔예요.', caution: '자패는 슌쯔가 되지 않아요. 이번에는 자패 커쯔를 2개 만들어요.', tip: '동·남·서·북·백·발·중의 모양을 보며 같은 패를 찾아보세요.' },
+    pairs: { title: '두 장짜리 짝은 머리', tiles: ['m7','m7'], rule: '같은 패 두 장은 머리 자리에 등록해요.', caution: '슌쯔·커쯔는 몸통, 두 장짜리는 머리예요. 몸통 2개와 머리 1개를 채워요.', tip: '머리를 먼저 만들어도 괜찮아요. 한 장만 따로 등록할 수는 없어요.' },
+    mixed: { title: '한 묶음 안에서는 같은 무늬', tiles: ['s2','s3','s4'], rule: '만수·삭수·통수를 함께 보며 골라요.', caution: '2만·3삭·4통은 슌쯔가 아니에요. 숫자가 같아도 무늬가 다르면 커쯔가 아니에요.', tip: '서로 다른 몸통은 무늬가 달라도 돼요. 몸통 2개와 머리 1개를 만들어요.' },
+    hand: { title: '네 몸통과 머리 하나', tiles: ['m2','m3','m4'], rule: '3장 × 몸통 4개 + 2장 × 머리 1개 = 14장', caution: '이번에는 만수만 보며 다섯 자리를 완성해요. 머리를 만들 패도 남겨 보세요.', tip: '이미 등록한 조합을 바꾸고 싶다면 ‘재조립’을 써요. 원래 차 있던 자리를 모두 다시 채워야 끝나요.' },
+    tanyao: { title: '첫 번째 역, 탕야오 · 1판', tiles: ['p3','p4','p5'], rule: '역은 완성한 손이 갖춰야 할 조건이에요. 탕야오는 2~8 숫자패만 써요.', caution: '1·9와 자패는 사용할 수 없어요. 슌쯔도 커쯔도 괜찮아요.', tip: '여기부터 남은 패와 추가로 발견한 역의 모양이 점수가 돼요. 다른 모양의 보너스는 기준 판수 × 10점이에요.' },
+  };
+  const lesson = lessons[stage.id] || lessons.hand;
+  sheet.innerHTML = sheetFrame('이번에 배울 것', `<p class="eyebrow">STEP ${stage.number} · ${stage.scored ? '역 만들기' : '점수 없는 연습'}</p><h3 class="intro-title">${lesson.title}</h3><div class="lesson-example">${miniGroup(lesson.tiles.map(code => ({ suit: code[0], rank: Number(code[1]) })))}</div><p class="lesson-rule">${lesson.rule}</p><div class="intro-callout"><strong>이번 목표</strong><p>${lesson.caution}</p></div><p class="lesson-tip">${lesson.tip}</p><p class="saved-note">${stage.note} · 패 순서는 매번 달라져요.</p>`, 'close', '<button class="action primary full" data-action="close">직접 만들어 보기</button>');
+}
+
 function renderHelp() {
   const honors = game.stageId === 'honors';
-  const examples = honors ? [{ name: '커쯔', copy: '같은 자패 3장 · 동동동처럼 묶어요', ranks: [1, 1, 1] }] : [
-    { name: '슌쯔', copy: '같은 무늬의 연속 숫자 3장', ranks: [2, 3, 4] },
-    { name: '커쯔', copy: '무늬와 숫자가 같은 패 3장', ranks: [5, 5, 5] },
-    ...(stageOf(game).pair ? [{ name: '머리', copy: '무늬와 숫자가 같은 패 2장', ranks: [7, 7] }] : []),
+  const examples = honors ? [{ kind: 'triplet', name: '커쯔', copy: '같은 자패 3장 · 동동동처럼 묶어요', ranks: [1, 1, 1] }] : [
+    { kind: 'sequence', name: '슌쯔', copy: '같은 무늬의 연속 숫자 3장', ranks: [2, 3, 4] },
+    { kind: 'triplet', name: '커쯔', copy: '무늬와 숫자가 같은 패 3장', ranks: [5, 5, 5] },
+    ...(stageOf(game).pair ? [{ kind: 'pair', name: '머리', copy: '무늬와 숫자가 같은 패 2장', ranks: [7, 7] }] : []),
   ];
-  sheet.innerHTML = sheetFrame('놀이 방법', `<p class="sheet-intro">${honors ? '자패는 같은 패끼리만 묶어요. 동·남·서처럼 이어도 슌쯔가 되지 않아요.' : '슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.'}</p>${honors ? `<div class="honor-guide">${HONORS.map((item, index) => `<figure>${miniTile({ suit: 'z', rank: index + 1 })}<figcaption>${item.name}</figcaption></figure>`).join('')}</div>` : ''}${examples.map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: honors ? 'z' : 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>패를 골라 <strong>묶음 등록</strong>을 눌러요.</li><li>빈칸은 <strong>공급받기</strong>로 채워요.</li><li>한 장을 고르면 <strong>버림·쯔모</strong>로 바꿔요.</li><li><strong>재조립</strong>에서는 강조된 슬롯을 다시 채워요.</li></ol><details class="more-help"><summary>패산과 연습 규칙</summary><p>${stageOf(game).note}. 버린 패는 다시 섞지 않아요. 마지막 패를 뽑은 뒤 조합을 확인하고 판을 마쳐요.</p><p>재조립은 원래의 몸통·머리 수를 유지하며, 공급이나 버림은 할 수 없어요. 이번 연습에는 타가·울기가 없어요. 작업대 등록은 치·펑과 달라요.</p></details>`, 'close', '<div class="controls"><button class="action secondary" data-action="hint" aria-label="지금 만들 수 있는 묶음 보기">묶음 힌트</button><button class="action primary" data-action="close">계속하기</button></div>');
+  sheet.innerHTML = sheetFrame('놀이 방법', `<p class="sheet-intro">${honors ? '자패는 같은 패끼리만 묶어요. 동·남·서처럼 이어도 슌쯔가 되지 않아요.' : '슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.'}</p>${honors ? `<div class="honor-guide">${HONORS.map((item, index) => `<figure>${miniTile({ suit: 'z', rank: index + 1 })}<figcaption>${item.name}</figcaption></figure>`).join('')}</div>` : ''}${examples.filter(item => !stageOf(game).bodyKind || item.kind === stageOf(game).bodyKind).map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: honors ? 'z' : 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>패를 골라 <strong>묶음 등록</strong>을 눌러요.</li><li>빈칸은 <strong>공급받기</strong>로 채워요.</li><li>한 장을 고르면 <strong>버림·쯔모</strong>로 바꿔요.</li><li><strong>재조립</strong>에서는 강조된 슬롯을 다시 채워요.</li></ol><details class="more-help"><summary>패산과 연습 규칙</summary><p>${stageOf(game).note}. 버린 패는 다시 섞지 않아요. 마지막 패를 뽑은 뒤 조합을 확인하고 판을 마쳐요.</p><p>재조립은 원래의 몸통·머리 수를 유지하며, 공급이나 버림은 할 수 없어요. 이번 연습에는 타가·울기가 없어요. 작업대 등록은 치·펑과 달라요.</p></details>`, 'close', '<div class="controls"><button class="action secondary" data-action="hint" aria-label="지금 만들 수 있는 묶음 보기">묶음 힌트</button><button class="action primary" data-action="close">계속하기</button></div>');
 }
 
 function renderStages() {
   const records = safeRead(RECORDS, {});
-  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요. 다른 단계로 이동하면 현재 판은 새로 시작해요.</p>${STAGES.map(stage => `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span><strong>${stage.title}</strong><small>${stage.note}</small></span><span class="lesson-badge">${records?.[stage.id]?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron')}</span></button>`).join('')}<p class="saved-note">모양 연습 단계는 점수 없이 익혀요.</p>`);
+  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요.<br>다른 단계로 이동하면 새 판을 시작해요.</p><div class="stage-pages" aria-label="단계 묶음">${['기초 1–3', '기초 4–6', '역 만들기'].map((name, i) => `<button data-action="stage-page" data-page="${i}" aria-pressed="${i === stagesPage}">${name}</button>`).join('')}</div>${STAGES.slice(stagesPage * 3, stagesPage * 3 + 3).map(stage => `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span><strong>${stage.title}</strong><small>${stage.note}</small></span><span class="lesson-badge">${records?.[stage.id]?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron')}</span></button>`).join('')}<p class="saved-note">${stagesPage === 2 ? '다른 역 스테이지는 준비 중이에요.' : '기초 6단계는 점수 없이 익혀요.'}</p>`, 'close', '<button class="action secondary full" data-action="intro">처음부터 · 패 소개 보기</button>');
 }
 
 function renderSettings() {
-  sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="settings-row"><span>자동정렬<small>등록·공급·교체 후 무늬와 숫자순으로 정렬해요.<br>재조립 중에는 패 위치를 유지해요.</small></span><button class="toggle" role="switch" aria-label="자동정렬" aria-checked="${prefs.autoSort}" data-action="auto-sort"></button></div><div class="sheet-actions"><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button></div><p class="credit">진행 상황과 설정은 이 브라우저에 저장돼요.<br>차곡 · 패 그림 <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`, 'close', '<button class="action primary full" data-action="close">계속하기</button>');
+  sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="settings-row"><span>자동정렬<small>등록·공급·교체 후 무늬와 숫자순으로 정렬해요.<br>재조립 중에는 패 위치를 유지해요.</small></span><button class="toggle" role="switch" aria-label="자동정렬" aria-checked="${prefs.autoSort}" data-action="auto-sort"></button></div><div class="sheet-actions"><button class="action secondary" data-action="intro">패 소개</button><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button></div><p class="credit">진행 상황과 설정은 이 브라우저에 저장돼요.<br>차곡 · 패 그림 <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`, 'close', '<button class="action primary full" data-action="close">계속하기</button>');
 }
 
 function renderRestart() {
@@ -214,12 +251,13 @@ function renderResult() {
   const hand = `<div class="result-hand" aria-label="${won ? '완성한' : '등록한'} 묶음">${slotsMarkup()}</div>`;
   const bonus = resultBonus === null ? null : score?.bonuses[resultBonus];
   if (bonus) {
-    sheet.innerHTML = sheetFrame('발견한 모양', `<div class="bonus-detail"><p class="eyebrow">탕야오와 함께 만들었어요</p><h3>${bonus.name}</h3><p class="bonus-points">+${bonus.points}점</p>${hand}<p>${bonus.description}</p><p class="result-note">등록한 묶음에서 발견한 모양이에요.<br>실전에서는 울기 등 성립 조건도 함께 배워요.</p></div>`, 'close', '<button class="action primary full" data-action="result-overview">결과로 돌아가기</button>');
+    sheet.innerHTML = sheetFrame('발견한 모양', `<div class="bonus-detail"><p class="eyebrow">탕야오와 함께 만들었어요</p><h3>${bonus.name}</h3><p class="bonus-points">${bonus.han}판 × 10 = +${bonus.points}점</p>${hand}<p>${bonus.description}</p><div class="intro-callout"><strong>실전에서는</strong><p>${bonus.openHan === null ? `멘젠일 때만 ${bonus.han}판이에요. 울면 성립하지 않아요.` : `멘젠 ${bonus.han}판 · 후로 ${bonus.openHan}판이에요.`}<br>멘젠은 치·펑 등으로 다른 사람의 패를 받아오지 않은 상태예요.</p></div><p class="result-note">지금은 등록한 모양에 멘젠 판수를 적용해요.<br>작업대 등록은 울기가 아니며, 실전 점수 계산과 달라요.</p></div>`, 'close', '<button class="action primary full" data-action="result-overview">결과로 돌아가기</button>');
     return;
   }
-  const bonusTotal = score?.bonuses.reduce((sum, item) => sum + item.points, 0) || 0;
+  const bonusTotal = score?.bonusHan * 10 || 0;
   const footer = `<div class="controls"><button class="action ${won && next ? 'secondary' : 'primary'}" data-action="restart-confirm">새 패로 재도전</button>${won && next ? `<button class="action primary" data-action="stage" data-stage="${next.id}" aria-label="다음 단계 · ${next.title}">다음 단계 ${icon('chevron')}</button>` : '<button class="action secondary" data-action="close">패 살펴보기</button>'}</div>`;
-  sheet.innerHTML = sheetFrame(won ? '스테이지 클리어' : '이번 연습의 기록', `<div class="result-hero"><h3>${won ? (stage.scored ? '탕야오를 만들었어요!' : stage.pair ? '한 손이 완성됐어요!' : '몸통 두 개, 완성!') : '패산을 모두 사용했어요'}</h3><p>${won ? (stage.scored ? '1과 9 없이, 2~8로 완성한 한 손' : '한 묶음씩, 모양이 익숙해지고 있어요.') : `${occupied(game)}개의 묶음을 만들었어요. 다시 도전해 봐요.`}</p></div>${score ? `<div class="score-banner"><strong>${score.total.toLocaleString()}<small>점</small></strong><span>내 최고 기록<strong>${Number(records?.[stage.id]?.best || score.total).toLocaleString()}점</strong></span></div>` : ''}${hand}${score ? `<div class="score-breakdown"><div><span>목표 완성</span><strong>+${score.base.toLocaleString()}</strong></div><div><span>남은 패 ${game.wall.length} × 10</span><strong>+${score.remaining}</strong></div><div><span>발견 보너스</span><strong>+${bonusTotal}</strong></div></div><div class="result-bonuses"><p>${score.bonuses.length ? '함께 만든 모양 · 눌러서 알아보기' : '다음엔 다른 역의 모양도 함께 만들어 봐요.'}</p><div>${score.bonuses.map((item, index) => `<button data-action="result-bonus" data-index="${index}">${item.name}<strong>+${item.points}</strong>${icon('chevron')}</button>`).join('')}</div></div><p class="result-note">등록한 묶음의 모양으로 계산한 퍼즐 점수예요.</p>` : `<p class="tutorial-result-note">${won ? '점수 없는 연습이에요.<br>익숙해졌다면 다음 단계로 넘어가 보세요.' : '버림패와 남은 조합을 돌아보고<br>새 패로 다시 연습해 보세요.'}</p>`}<div class="result-meta"><span>공급 <strong>${game.supplies}회</strong></span><span>한 장 교체 <strong>${game.exchanges}회</strong></span><span>남은 패 <strong>${game.wall.length}장</strong></span></div>`, 'close', footer);
+  const successTitle = stage.scored ? '탕야오를 만들었어요!' : stage.id === 'hand' ? '한 손이 완성됐어요!' : stage.pair ? '몸통과 머리를 구분했어요!' : stage.bodyKind === 'sequence' ? '슌쯔 두 개, 완성!' : stage.bodyKind === 'triplet' ? '커쯔 두 개, 완성!' : '몸통 두 개, 완성!';
+  sheet.innerHTML = sheetFrame(won ? '스테이지 클리어' : '이번 연습의 기록', `<div class="result-hero${won ? ' cleared' : ''}">${won ? `<span class="clear-seal">${icon('spark')} ${stage.scored ? '탕야오 · 1판' : `STEP ${stage.number} COMPLETE`}</span>` : ''}<h3>${won ? successTitle : '패산을 모두 사용했어요'}</h3><p>${won ? (stage.scored ? '1과 9 없이, 2~8로 완성한 한 손' : '한 묶음씩, 모양이 익숙해지고 있어요.') : `${occupied(game)}개의 묶음을 만들었어요. 다시 도전해 봐요.`}</p></div>${score ? `<div class="score-banner"><strong>${score.total.toLocaleString()}<small>점</small></strong><span>내 최고 · 현재 점수 규칙<strong>${Number(records?.[stage.id]?.bestByScoreVersion?.[SCORE_VERSION] || score.total).toLocaleString()}점</strong></span></div>` : ''}${hand}${score ? `<div class="score-breakdown"><div><span>목표 완성</span><strong>+${score.base.toLocaleString()}</strong></div><div><span>남은 패 ${game.wall.length} × 10</span><strong>+${score.remaining}</strong></div><div><span>추가 ${score.bonusHan}판 × 10</span><strong>+${bonusTotal}</strong></div></div><div class="result-bonuses"><p>${score.bonuses.length ? '함께 만든 모양 · 눌러서 알아보기' : '다음엔 다른 역의 모양도 함께 만들어 봐요.'}</p><div>${score.bonuses.map((item, index) => `<button data-action="result-bonus" data-index="${index}"><span class="bonus-copy"><strong>${item.name}<small>${item.han}판</small></strong><span>${item.description}</span></span><span class="bonus-award">+${item.points}<small>${item.han}판 × 10</small></span>${icon('chevron')}</button>`).join('')}</div></div><p class="result-note">추가 모양은 멘젠 판수 기준 · 실전 점수와 달라요.</p>` : `<div class="tutorial-achievement">${icon(won ? 'check' : 'rebuild')}<p>${won ? '이번 모양을 익혔어요.<br>점수 부담 없이 다음 단계로 가볼까요?' : '버림패와 남은 조합을 돌아보고<br>새 패로 다시 연습해 보세요.'}</p></div>`}<div class="result-meta"><span>공급 <strong>${game.supplies}회</strong></span><span>한 장 교체 <strong>${game.exchanges}회</strong></span><span>남은 패 <strong>${game.wall.length}장</strong></span></div>`, 'close', footer);
 }
 function handleClick(event) {
   const button = event.target.closest('[data-action]');
@@ -271,14 +309,18 @@ function handleClick(event) {
     else startStage(button.dataset.stage);
   } else if (action === 'restart-confirm') startStage(game.stageId);
   else if (action === 'end-confirm') { game = endRound(game); remember(); render(); openSheet('result'); }
+  else if (action === 'stage-page') { stagesPage = Number(button.dataset.page); renderStages(); }
+  else if (action === 'intro-next' || action === 'intro-prev') { introPage = action === 'intro-next' ? 1 : 0; renderIntro(); sheet.querySelector('#sheet-title')?.focus({ preventScroll: true }); }
+  else if (action === 'intro-finish') finishIntro();
   else if (action === 'close') closeSheet();
-  else if (['help', 'settings', 'stages', 'restart', 'result', 'end'].includes(action)) openSheet(action);
+  else if (['help', 'settings', 'stages', 'restart', 'result', 'end', 'intro', 'lesson'].includes(action)) openSheet(action);
 }
 
 root.addEventListener('click', handleClick);
 sheet.addEventListener('click', handleClick);
 sheet.addEventListener('cancel', event => {
   event.preventDefault();
+  if (activeSheet === 'intro') { finishIntro(); return; }
   if (game.edit) { game = cancelReassembly(game); selected = []; hinted = []; say('재조립을 취소했어요.'); remember(); }
   closeSheet(); render();
 });
@@ -286,3 +328,5 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) remem
 remember();
 render();
 if (game.status === 'won' || game.status === 'lost') { recordWin(); openSheet('result'); }
+else if (!prefs.introSeen && game.stageId === 'sequences') openSheet('intro');
+else if (!resuming && !prefs.lessonsSeen.includes(game.stageId)) openSheet('lesson');

@@ -1,7 +1,7 @@
 // Isolated UI previews: a separate loopback origin protects normal saved games.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { createGame, validSavedGame } from '../engine.js';
+import { STAGES, createGame, validSavedGame } from '../engine.js';
 
 const fixtures = {};
 function fixture(stage, groups, pair, discards, status) {
@@ -28,6 +28,11 @@ fixtures.river = fixture('tanyao', [['m2','m3','m4'], ['s5','s6','s7']], null, 3
 fixtures.lost = fixture('tanyao', [], null, 95, 'lost');
 fixtures.sort = fixture('hand', [['m2','m3','m4']], null, 3, 'playing');
 fixtures.honors = fixture('honors', [], null, 0, 'playing');
+fixtures.intro = createGame('sequences', 4444);
+fixtures.pairs = fixture('pairs', [['m2','m3','m4'], ['m5','m5','m5']], ['m7','m7'], 0, 'won');
+fixtures.oldscore = fixtures.bonus;
+fixtures.sequence = fixture('sequences', [], null, 0, 'playing');
+fixtures.triplet = fixture('triplets', [], null, 0, 'playing');
 const assets = new Map([['/app.js','text/javascript'], ['/engine.js','text/javascript'], ['/styles.css','text/css'], ['/favicon.svg','image/svg+xml']]);
 createServer(async (request, response) => {
   try {
@@ -35,7 +40,13 @@ createServer(async (request, response) => {
     if (url.pathname === '/') {
       const game = fixtures[url.searchParams.get('case')];
       let html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-      if (game) html = html.replace('<script type="module"', `<script>localStorage.setItem('chagok-v1', ${JSON.stringify(JSON.stringify(game))});localStorage.setItem('chagok-preferences-v1','{}');localStorage.setItem('chagok-records-v1','{}');</script><script type="module"`);
+      if (game) {
+        const firstVisit = url.searchParams.get('case') === 'intro';
+        const prefs = firstVisit ? {} : { introSeen: true, lessonsSeen: STAGES.map(stage => stage.id) };
+        const records = url.searchParams.get('case') === 'oldscore' ? { tanyao: { completed: true, best: 9990 } } : {};
+        const storage = firstVisit ? "localStorage.removeItem('chagok-v1');" : `localStorage.setItem('chagok-v1', ${JSON.stringify(JSON.stringify(game))});`;
+        html = html.replace('<script type="module"', `<script>${storage}localStorage.setItem('chagok-preferences-v1',${JSON.stringify(JSON.stringify(prefs))});localStorage.setItem('chagok-records-v1',${JSON.stringify(JSON.stringify(records))});</script><script type="module"`);
+      }
       response.writeHead(200, { 'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store' });
       response.end(html);
       return;

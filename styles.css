@@ -35,6 +35,7 @@ svg { display:block; }
 .workbench { background:rgba(5,26,22,.19); border:1px solid var(--line); border-radius:var(--radius); padding:0 8px 8px; }
 .slots { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .slots.with-pair { grid-template-columns:1fr 1fr 62px; }
+.slots.small-hand .pair-slot { grid-row:1; }
 .slot { height:50px; min-width:0; border:1px dashed rgba(212,236,219,.23); border-radius:8px; display:flex; flex-direction:column; gap:1px; align-items:center; justify-content:center; background:rgba(255,255,255,.015); position:relative; }
 .slot:nth-child(3) { grid-column:1; grid-row:2; }
 .slot:nth-child(4) { grid-column:2; grid-row:2; }
@@ -58,9 +59,9 @@ svg { display:block; }
 .river-range small { font-size:11px; }
 .river-direction { color:#8fab9b; font-size:11px; }
 .river-field { flex:1; min-height:38px; position:relative; }
-.river-grid { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); grid-auto-rows:36px; align-content:start; gap:4px; padding:0; margin:0; list-style:none; }
+.river-grid { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); grid-auto-rows:34px; align-content:start; gap:4px; padding:0; margin:0; list-style:none; }
 .river-grid li { min-width:0; }
-.river-grid .mini-tile { display:block; width:100%; height:34px; padding:2px; }
+.river-grid .mini-tile { display:block; width:100%; height:32px; padding:2px; }
 .river-empty { color:#91ac9d; font-size:12px; margin:2px 0; }
 .play-zone { padding-top:2px; flex-shrink:0; }
 .tray-heading { min-height:44px; }
@@ -194,7 +195,7 @@ dialog[data-view="edit"] .selection-info { flex-shrink:0; }
 .bonus-detail .result-note { font-size:12px; margin-top:22px; }
 .bonus-detail .result-hand { margin:12px 0; }
 .saved-note { text-align:center; color:var(--muted); font-size:12px; margin:12px 0 0; }
-dialog[data-view="result"] .sheet-content { display:flex; flex-direction:column; }
+dialog[data-view="result"] .sheet-content { display:flex; flex-direction:column; container:result / size; }
 dialog[data-view="result"] .sheet-content > * { flex-shrink:0; }
 @media(max-height:600px) and (max-width:599px) { .result-hero { padding:3px 0; } .result-hero h3 { font-size:21px; } .result-hand { padding:5px 0; } .result-hand .slot { height:43px; } .result-hand .pair-slot { height:100%; } .result-meta { padding:8px 0; } .score-banner > strong { font-size:32px; } }
 @media(min-width:600px) { body { padding:24px 0; background:radial-gradient(ellipse at 50% 40%,#24483c,#0c2523 68%); } .desktop-note { display:flex; align-items:center; justify-content:center; gap:15px; color:#8daa98; font-size:12px; letter-spacing:2px; margin:0 auto 16px; } .note-line { width:35px; height:1px; background:#729c7c55; } .game-shell { min-height:720px; width:430px; border:1px solid #648b6640; border-radius:26px; padding:18px; box-shadow:0 24px 100px #0005; } dialog { margin:auto; border-radius:22px; max-height:92dvh; } dialog.expanded { height:min(780px,96dvh); max-height:96dvh; border:1px solid #4e6d59; border-radius:22px; } }
@@ -208,4 +209,116 @@ dialog[data-view="result"] .sheet-content > * { flex-shrink:0; }
   .play-zone .tile-grid { row-gap:6px; }
   .play-zone .tile-button,.play-zone .tile-space { height:56px; aspect-ratio:auto; }
   .gameplay-controls .action { min-height:49px; }
+}
+
+/* Each introduction page teaches one idea and keeps its action within reach. */
+.intro-title { font-size:22px; line-height:1.35; letter-spacing:-.7px; margin:10px 0; }
+dialog[data-view="intro"] .sheet-content { container:introduction / size; }
+.tile-family { padding:10px 0; border-bottom:1px solid var(--line); }
+.tile-family h3 { display:flex; align-items:center; gap:8px; font-size:14px; margin:0 0 9px; }
+.tile-family h3 small { color:var(--muted); font-size:12px; font-weight:400; }
+.intro-tiles { display:grid; grid-template-columns:repeat(9,minmax(0,1fr)); gap:5px; }
+.intro-tiles figure,.intro-honors figure { margin:0; text-align:center; }
+.intro-tiles .mini-tile { width:100%; height:40px; padding:2px; }
+.intro-tiles figcaption,.intro-honors figcaption { font-size:12px; color:var(--muted); margin-top:5px; }
+.intro-honors { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; padding:24px 0; }
+.intro-honors .mini-tile { width:100%; height:54px; }
+.intro-tip,.lesson-tip { color:var(--muted); font-size:13px; margin:14px 0; word-break:keep-all; }
+.intro-callout { background:var(--deep); border:1px solid var(--line); border-radius:14px; padding:14px; margin:14px 0; }
+.intro-callout strong { color:var(--green); font-size:14px; }
+.intro-callout p { margin:6px 0 0; font-size:14px; color:var(--muted); word-break:keep-all; }
+.lesson-example { display:grid; place-items:center; min-height:100px; margin:12px 0; border-radius:18px; background:radial-gradient(ellipse at center,#729c7040,transparent 72%); }
+.lesson-example .mini-tile { width:47px; height:63px; border-radius:5px; padding:4px; }
+.lesson-example .mini-tiles { gap:6px; }
+.lesson-rule { font-size:16px; text-align:center; word-break:keep-all; }
+.stage-pages { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin:12px 0; }
+.stage-pages button { min-height:44px; background:#0e302c; border-radius:9px; border:1px solid var(--line); color:var(--muted); font-size:13px; }
+.stage-pages button[aria-pressed=true] { color:var(--accent); border-color:var(--accent); background:#a7efb310; }
+dialog[data-view="settings"] .sheet-actions { display:grid; grid-template-columns:1fr 1fr; }
+
+/* The completed hand has more space than the workbench, including short views. */
+.result-hero.cleared { background:radial-gradient(ellipse at 50% 0,#d7f69018,transparent 75%); border-radius:20px 20px 0 0; }
+.clear-seal { display:inline-flex; align-items:center; justify-content:center; gap:5px; color:#e8d597; font-size:11px; letter-spacing:1px; margin:0 0 7px; }
+.clear-seal .icon { width:14px; height:14px; }
+.result-hand { padding:12px 0; }
+.result-hand .slot { height:62px; gap:5px; border:1px solid #d4e5bc45; background:linear-gradient(145deg,#b8ddad12,#244c4109); border-radius:11px; }
+.result-hand .pair-slot { height:100%; }
+.result-hand .mini-tile { width:26px; height:34px; }
+.result-hand .slot-label { font-size:11px; letter-spacing:.5px; }
+.result-bonuses > div { display:grid; grid-template-columns:1fr; gap:8px; }
+.result-bonuses button { min-height:68px; white-space:normal; justify-content:space-between; text-align:left; padding:10px 12px; gap:10px; background:linear-gradient(115deg,#d7f69010,#d7f69003); border-color:#d7f69040; }
+.result-bonuses .bonus-copy { flex:1; min-width:0; }
+.result-bonuses .bonus-copy > strong { display:flex; align-items:center; gap:7px; font-size:15px; }
+.bonus-copy strong small { border:1px solid #d7f69040; padding:2px 5px; border-radius:5px; font-size:10px; font-weight:500; }
+.bonus-copy > span { display:block; font-size:11px; color:var(--muted); line-height:1.5; margin-top:5px; }
+.bonus-award { font-size:22px; font-weight:650; text-align:right; white-space:nowrap; }
+.bonus-award small { display:block; font-size:10px; color:var(--muted); margin-top:3px; font-weight:400; }
+.tutorial-achievement { flex:1 0 auto; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:24px 0; text-align:center; }
+.tutorial-achievement > .icon { width:46px; height:46px; padding:10px; border:1px solid #a7efb350; border-radius:50%; color:var(--green); background:#a7efb310; }
+.tutorial-achievement p { color:var(--muted); font-size:14px; margin:12px 0; }
+@media(min-height:700px) {
+  .workbench .slot { height:54px; }
+  .workbench .pair-slot { height:100%; }
+  .result-hero { padding:14px 0 10px; }
+  .result-hand .slot { height:68px; }
+  .result-hand .pair-slot { height:100%; }
+  .result-bonuses button { min-height:78px; }
+}
+@container result (max-height:660px) {
+  .result-hero { padding:3px 0; }
+  .result-hero h3 { font-size:22px; }
+  .result-hero p { font-size:12px; margin:3px 0; }
+  .clear-seal { margin-bottom:2px; }
+  .result-hand { padding:6px 0; }
+  .result-bonuses button { min-height:60px; padding:8px 10px; }
+  .bonus-copy > span { font-size:10px; margin-top:3px; }
+  .score-banner > strong { font-size:32px; }
+  .result-note { margin:4px 0; }
+  .result-meta { padding:7px 0; }
+}
+@container result (max-height:590px) {
+  .result-hero { padding:2px 0; }
+  .result-hero h3 { font-size:21px; }
+  .result-hero > p,.result-hero .clear-seal { display:none; }
+  .score-banner { padding:2px 10px; }
+  .score-banner > strong { font-size:30px; }
+  .result-hand { padding:4px 0; }
+  .result-hand .slot { height:52px; gap:2px; }
+  .result-hand .pair-slot { height:100%; }
+  .result-hand .mini-tile { width:23px; height:29px; }
+  .score-breakdown { padding:7px 3px; }
+  .result-bonuses > p { margin:7px 0 4px; }
+  .result-bonuses > div { grid-template-columns:1fr 1fr; gap:6px; }
+  .result-bonuses button { min-height:52px; padding:6px 8px; gap:4px; }
+  .result-bonuses .bonus-copy > strong { display:block; font-size:13px; }
+  .bonus-copy strong small { display:block; border:0; padding:0; margin-top:3px; }
+  .bonus-copy > span,.bonus-award small,.result-bonuses .icon { display:none; }
+  .bonus-award { font-size:20px; }
+  .result-note { font-size:10px; margin:4px 0; }
+  .result-meta { padding:7px 0; font-size:11px; }
+  .bonus-detail { padding-top:6px; }
+  .bonus-detail h3 { font-size:24px; margin:6px 0 4px; }
+  .bonus-detail > p { font-size:13px; margin:10px 0; }
+  .bonus-detail .bonus-points { margin:0 0 8px; }
+  .bonus-detail .intro-callout { padding:10px; margin:10px 0; }
+  .bonus-detail .intro-callout p { font-size:12px; }
+  .bonus-detail .result-hand { margin:8px 0; }
+  .bonus-detail .result-note { margin-top:10px; }
+}
+@media(max-height:600px) {
+  .lesson-example { min-height:76px; margin:8px 0; }
+  .lesson-example .mini-tile { width:40px; height:54px; }
+  .lesson-rule { font-size:14px; margin:8px 0; }
+  .intro-title { font-size:20px; }
+  .intro-callout { padding:12px; margin:10px 0; }
+  .intro-tip,.lesson-tip { margin:10px 0; }
+  .tile-family { padding:7px 0; }
+}
+@container introduction (max-height:500px) {
+  .intro-title { font-size:20px; margin:6px 0; }
+  .tile-family { padding:5px 0; }
+  .tile-family h3 { margin-bottom:5px; }
+  .intro-tiles .mini-tile { height:36px; }
+  .intro-tiles figcaption { margin-top:3px; }
+  .intro-tip { font-size:12px; margin:8px 0; }
 }

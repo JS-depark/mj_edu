@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, HONORS, makeTiles, tileName, tileAsset, tileOrder, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
+import { STAGES, HONORS, SCORE_VERSION, YAKU_VALUES, stageOf, makeTiles, tileName, tileAsset, tileOrder, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
 
 function fixture(stageId, { tray = [], groups = [], pair = null, remaining = null, status = 'playing' } = {}) {
   const game = createGame(stageId, 777);
@@ -21,7 +21,7 @@ function fixture(stageId, { tray = [], groups = [], pair = null, remaining = nul
 }
 const ids = state => state.tray.filter(Boolean).map(tile => tile.id);
 function inventory(state) {
-  const stage = STAGES.find(item => item.id === state.stageId);
+  const stage = stageOf(state);
   const all = [...state.wall, ...state.tray.filter(Boolean), ...state.groups.filter(Boolean).flat(), ...(state.pair || []), ...state.discards];
   assert.equal(all.length, stage.suits.reduce((sum, suit) => sum + (suit === 'z' ? 28 : 36), 0));
   assert.equal(new Set(all.map(tile => tile.id)).size, all.length);
@@ -165,12 +165,19 @@ test('reassembly refills only the originally occupied slots, even across gaps', 
 test('structural bonuses combine only compatible registered shapes', () => {
   const double = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['m2', 'm3', 'm4'], ['m5', 'm6', 'm7'], ['m5', 'm6', 'm7']], pair: ['m8', 'm8'], status: 'won' });
   const score = scoreGame(double);
-  assert.deepEqual(score.bonuses.map(bonus => bonus.name), ['량페코 모양', '청일색 모양']);
-  assert.equal(score.total, 1000 + double.wall.length * 10 + 600);
+  assert.deepEqual(score.bonuses.map(bonus => bonus.name), ['량페코', '청일색']);
+  assert.equal(score.total, 1000 + double.wall.length * 10 + 90);
+  assert.equal(score.version, SCORE_VERSION);
+  assert.equal(score.bonusHan, 9);
+  assert.deepEqual(score.bonuses.map(bonus => [bonus.han, bonus.openHan, bonus.points]), [[3, null, 30], [6, 5, 60]]);
   const triple = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['p2', 'p3', 'p4'], ['s2', 's3', 's4'], ['s6', 's7', 's8']], pair: ['p5', 'p5'], status: 'won' });
-  assert.deepEqual(scoreGame(triple).bonuses.map(bonus => bonus.name), ['삼색동순 모양']);
+  assert.deepEqual(scoreGame(triple).bonuses.map(bonus => bonus.name), ['삼색동순']);
+  assert.equal(scoreGame(triple).bonuses[0].points, 20);
   const triplets = fixture('tanyao', { groups: [['m2', 'm2', 'm2'], ['p4', 'p4', 'p4'], ['s6', 's6', 's6'], ['m8', 'm8', 'm8']], pair: ['p5', 'p5'], status: 'won' });
-  assert.deepEqual(scoreGame(triplets).bonuses.map(bonus => bonus.name), ['또이또이 모양']);
+  assert.deepEqual(scoreGame(triplets).bonuses.map(bonus => bonus.name), ['또이또이']);
+  assert.equal(scoreGame(triplets).bonuses[0].points, 20);
+  const single = fixture('tanyao', { groups: [['m2','m3','m4'], ['m2','m3','m4'], ['p5','p6','p7'], ['s6','s7','s8']], pair: ['p2','p2'], status: 'won' });
+  assert.equal(scoreGame(single).bonuses[0].points, 10);
 });
 
 test('corrupt browser saves are rejected', () => {
@@ -182,7 +189,7 @@ test('corrupt browser saves are rejected', () => {
   assert.equal(validSavedGame({ ...game, exchanges: '<script>' }), false);
 });
 
-test('240 random mechanical games conserve every tile through registration, refill and exchanges', () => {
+test(`${STAGES.length * 60} random mechanical games conserve every tile through registration, refill and exchanges`, () => {
   for (const stage of STAGES) for (let seed = 1; seed <= 60; seed++) {
     let game = createGame(stage.id, seed * 7919);
     const random = seededRandom(seed);
@@ -238,4 +245,37 @@ test('honour ranks are not numeric simple tiles for tanyao', () => {
   assert.equal(match.ok, false);
   assert.match(match.message, /자패/);
   assert.equal(validSavedGame(game), false);
+});
+
+test('separate beginner lessons enforce the taught meld and reject incompatible saved groups', () => {
+  assert.equal(createGame().stageId, 'sequences');
+  for (const [stageId, allowed, rejected] of [
+    ['sequences', ['m2','m3','m4'], ['m5','m5','m5']],
+    ['triplets', ['m5','m5','m5'], ['m2','m3','m4']],
+  ]) {
+    const good = fixture(stageId, { tray: [...allowed, ...(stageId === 'triplets' ? ['m6','m6','m6'] : allowed)] });
+    const first = register(good, ids(good).slice(0, 3)).state;
+    assert.equal(first.status, 'playing');
+    const won = register(first, ids(first)).state;
+    assert.equal(won.status, 'won');
+    assert.equal(scoreGame(won), null);
+    const bad = fixture(stageId, { tray: rejected });
+    assert.equal(register(bad, ids(bad)).ok, false);
+    const saved = fixture(stageId, { groups: [rejected] });
+    assert.equal(validSavedGame(saved), false);
+  }
+});
+
+test('head lesson needs a pair in addition to both bodies; older mixed lessons still resume', () => {
+  const game = fixture('pairs', { groups: [['m2','m3','m4']], tray: ['m5','m5','m5','m7','m7'] });
+  const bodies = register(game, ids(game).slice(0, 3)).state;
+  assert.equal(bodies.status, 'playing');
+  const won = register(bodies, ids(bodies)).state;
+  assert.equal(won.status, 'won');
+  assert.ok(validSavedGame(won));
+  const legacy = fixture('shapes', { groups: [['m5','m5','m5']], tray: ['m2','m3','m4'] });
+  assert.ok(validSavedGame(legacy));
+  assert.equal(register(legacy, ids(legacy)).state.status, 'won');
+  assert.equal(STAGES.some(stage => stage.id === 'shapes'), false);
+  assert.equal(Object.keys(YAKU_VALUES).length, 12);
 });
