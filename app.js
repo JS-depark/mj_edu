@@ -1,4 +1,4 @@
-import { STAGES, tileName, stageOf, occupied, createGame, registration, register, supply, exchange, sortTray, beginReassembly, releaseGroup, canFinishReassembly, finishReassembly, cancelReassembly, endRound, findGroup, scoreGame, validSavedGame } from './engine.js';
+import { STAGES, HONORS, tileName, tileAsset, stageOf, occupied, createGame, registration, register, supply, exchange, sortTray, beginReassembly, releaseGroup, canFinishReassembly, finishReassembly, cancelReassembly, endRound, findGroup, scoreGame, validSavedGame } from './engine.js';
 
 const root = document.querySelector('#app');
 const sheet = document.querySelector('#sheet');
@@ -27,13 +27,18 @@ const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
 const loaded = safeRead(STORAGE, null);
 let game = validSavedGame(loaded) ? loaded : createGame('shapes', freshSeed());
 const preferences = safeRead(PREFS, {});
-let prefs = { numbers: preferences?.numbers !== false };
+let prefs = { numbers: preferences?.numbers !== false, autoSort: preferences?.autoSort === true };
+if (prefs.autoSort) game = sortTray(game);
 let selected = [];
 let hinted = [];
 let feedback = '';
 let feedbackError = false;
 let activeSheet = null;
 let focusBeforeSheet = null;
+let riverPage = null;
+let riverPageSize = 10;
+let resultBonus = null;
+const riverObserver = new ResizeObserver(() => renderRiverBoard());
 
 function remember() { safeWrite(STORAGE, game.edit ? game.edit.snapshot : game); }
 function recordWin() {
@@ -45,13 +50,13 @@ function recordWin() {
   safeWrite(RECORDS, records);
 }
 
-const assetName = tile => `${{ m: 'Man', p: 'Pin', s: 'Sou' }[tile.suit]}${tile.rank}`;
+const assetName = tileAsset;
 const miniTile = tile => `<img class="mini-tile" src="./assets/tiles/${assetName(tile)}.svg" alt="${tileName(tile)}" draggable="false">`;
 const miniGroup = tiles => `<span class="mini-tiles">${tiles.map(miniTile).join('')}</span>`;
 
 function tileButton(tile) {
   const chosen = selected.includes(tile.id);
-  return `<button class="tile-button${chosen ? ' selected' : ''}${hinted.includes(tile.id) ? ' hinted' : ''}" data-action="tile" data-id="${tile.id}" aria-label="${tileName(tile)}" aria-pressed="${chosen}" ${game.status !== 'playing' ? 'disabled' : ''}><img src="./assets/tiles/${assetName(tile)}.svg" alt="" draggable="false">${prefs.numbers ? `<span class="tile-number" aria-hidden="true">${tile.rank}</span>` : ''}</button>`;
+  return `<button class="tile-button${chosen ? ' selected' : ''}${hinted.includes(tile.id) ? ' hinted' : ''}" data-action="tile" data-id="${tile.id}" aria-label="${tileName(tile)}" aria-pressed="${chosen}" ${game.status !== 'playing' ? 'disabled' : ''}><img src="./assets/tiles/${assetName(tile)}.svg" alt="" draggable="false">${prefs.numbers && tile.suit !== 'z' ? `<span class="tile-number" aria-hidden="true">${tile.rank}</span>` : ''}</button>`;
 }
 
 function slotsMarkup(editing = false) {
@@ -84,12 +89,28 @@ function render() {
   root.innerHTML = `
     <section class="lesson-panel" aria-label="이번 단계의 목표"><div class="lesson"><button class="lesson-link" data-action="stages" aria-label="단계 선택, 현재 ${stage.title}"><span class="eyebrow">${stage.number} · ${stage.tag}</span><h1>${stage.title}${icon('down')}</h1></button><div class="wall${game.wall.length <= 6 ? ' low' : ''}" aria-label="남은 패 ${game.wall.length}장"><strong>${game.wall.length}</strong><span>남은 패</span></div><button class="icon-button menu-button" data-action="settings" aria-label="게임 메뉴">${icon('settings')}</button></div><p class="lesson-description">${stage.description}</p></section>
     <section class="workbench" aria-label="등록한 묶음"><div class="section-heading"><h2>작업대<span class="count">${occupied(game)} / ${stage.bodies + Number(stage.pair)}</span></h2><button class="text-button" data-action="reassemble" ${!occupied(game) || game.status !== 'playing' ? 'disabled' : ''}>${icon('rebuild')}재조립</button></div>${slotsMarkup()}</section>
-    <section class="river-section" aria-label="버림패"><h2>버림패<span class="count">${game.discards.length}장</span></h2><div class="river">${game.discards.length ? `${game.discards.length > 7 ? `<span class="river-more">+${game.discards.length - 7}</span>` : ''}${game.discards.slice(-7).map(miniTile).join('')}` : '<p class="river-empty">버린 패가 차례대로 쌓여요.</p>'}</div><button class="icon-button" data-action="river" aria-label="버림패 순서 보기" ${!game.discards.length ? 'disabled' : ''}>${icon('chevron')}</button></section>
+    <section class="river-section" aria-label="버림패"><div class="river-heading"><h2>버림패<span class="count">${game.discards.length}장</span></h2><div class="river-pagination"></div></div><div class="river-field"></div></section>
     <section class="play-zone" aria-label="패 고르기"><div class="section-heading tray-heading">${selected.length || feedback ? selectionMarkup() : `<h2>공급대<span class="count">${game.tray.filter(Boolean).length} / 13</span></h2><span class="tray-prompt">${last ? '마지막 조합을 확인해요' : '패를 골라 주세요'}</span>`}${!selected.length ? `<button class="text-button sort-button" data-action="sort" aria-label="무늬와 숫자순으로 정렬">${icon('sort')}정렬</button>` : ''}</div>
     <div class="tile-grid" aria-label="공급대의 패, ${game.tray.filter(Boolean).length}장">${game.tray.map(tile => tile ? tileButton(tile) : '<div class="tile-space" aria-label="공급할 빈자리"><span>＋</span></div>').join('')}</div>
-    ${game.status === 'playing' ? `<div class="controls gameplay-controls"><button class="action primary register" data-action="register" aria-label="${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록하기` : '묶음 등록하기'}" ${!match.ok ? 'disabled' : ''}>${icon('check')}${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록` : '묶음 등록'}</button><button class="action secondary" data-action="exchange" aria-label="한 장 버림·쯔모" ${selected.length !== 1 || !game.wall.length ? 'disabled' : ''}>버림·쯔모</button>${last ? '<button class="action secondary" data-action="end" aria-label="이번 판 마치기">판 마치기</button>' : `<button class="action secondary" data-action="supply" aria-label="${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급받기` : '공급받기'}" ${!vacancies ? 'disabled' : ''}>${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급` : '공급받기'}</button>`}</div>` : `<div class="controls"><button class="action primary full" data-action="result">결과 보기 ${icon('chevron')}</button><button class="action secondary full" data-action="restart">${icon('rebuild')}새 패로 다시 하기</button></div>`}
+    ${game.status === 'playing' ? `<div class="controls gameplay-controls"><button class="action primary register" data-action="register" aria-label="${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록하기` : '묶음 등록하기'}" ${!match.ok ? 'disabled' : ''}>${icon('check')}${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록` : '묶음 등록'}</button><button class="action secondary" data-action="exchange" aria-label="한 장 버림·쯔모" ${selected.length !== 1 || !game.wall.length ? 'disabled' : ''}>버림·쯔모</button>${last ? '<button class="action secondary" data-action="end" aria-label="이번 판 마치기">판 마치기</button>' : `<button class="action secondary" data-action="supply" aria-label="${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급받기` : '공급받기'}" ${!vacancies ? 'disabled' : ''}>${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급` : '공급받기'}</button>`}</div>` : `<div class="controls"><button class="action primary" data-action="result">결과 보기 ${icon('chevron')}</button><button class="action secondary" data-action="restart">새 패로 다시 하기</button></div>`}
     </section>`;
-  if (activeSheet === 'edit') renderEdit();
+  riverObserver.disconnect();
+  riverObserver.observe(root.querySelector('.river-field'));
+  renderRiverBoard();
+}
+
+function renderRiverBoard() {
+  const field = root.querySelector('.river-field');
+  if (!field) return;
+  // Tiles keep a readable size; surplus history uses pages, never a scroll strip.
+  const capacity = Math.max(1, Math.floor((field.clientHeight + 4) / 40)) * 10;
+  if (capacity !== riverPageSize) { riverPageSize = capacity; riverPage = null; }
+  const pages = Math.max(1, Math.ceil(game.discards.length / capacity));
+  const page = riverPage === null ? pages - 1 : Math.min(riverPage, pages - 1);
+  const start = page * capacity;
+  const visible = game.discards.slice(start, start + capacity);
+  root.querySelector('.river-pagination').innerHTML = pages > 1 ? `<button class="icon-button previous" data-action="river-prev" aria-label="이전 버림패" ${!page ? 'disabled' : ''}>${icon('chevron')}</button><span class="river-range" aria-live="polite">${start + 1}–${start + visible.length}<small> / ${game.discards.length}</small></span><button class="icon-button" data-action="river-next" aria-label="다음 버림패" ${page === pages - 1 ? 'disabled' : ''}>${icon('chevron')}</button>` : '<span class="river-direction">버린 순서대로 →</span>';
+  field.innerHTML = visible.length ? `<ol class="river-grid" start="${start + 1}" aria-label="${start + 1}번째부터 ${start + visible.length}번째 버림패">${visible.map((tile, i) => `<li aria-label="${start + i + 1}번째, ${tileName(tile)}">${miniTile(tile)}</li>`).join('')}</ol>` : '<p class="river-empty">버린 패가 여기에 순서대로 쌓여요.</p>';
 }
 
 function say(message, error = false) {
@@ -100,7 +121,8 @@ function say(message, error = false) {
 
 function apply(result) {
   if (!result.ok) { say(result.message, true); render(); return; }
-  game = result.state;
+  if (game.discards.length !== result.state.discards.length) riverPage = null;
+  game = prefs.autoSort && !result.state.edit ? sortTray(result.state) : result.state;
   selected = [];
   hinted = [];
   say(result.message);
@@ -111,6 +133,7 @@ function apply(result) {
 
 function startStage(stageId) {
   game = createGame(stageId, freshSeed());
+  riverPage = null;
   selected = []; hinted = []; feedback = ''; feedbackError = false;
   closeSheet(); remember(); render();
   announce.textContent = `${stageOf(game).title}, 새 패로 시작했어요.`;
@@ -123,13 +146,13 @@ function sheetFrame(title, content, closeAction = 'close', footer = '') {
 function openSheet(kind) {
   if (!sheet.open) focusBeforeSheet = document.activeElement?.dataset?.action;
   activeSheet = kind;
+  if (kind === 'result') resultBonus = null;
   sheet.dataset.view = kind;
-  sheet.classList.toggle('expanded', kind === 'edit' || kind === 'help');
+  sheet.classList.toggle('expanded', ['edit', 'help', 'result', 'settings', 'stages'].includes(kind));
   if (kind === 'edit') renderEdit();
   else if (kind === 'help') renderHelp();
   else if (kind === 'stages') renderStages();
   else if (kind === 'settings') renderSettings();
-  else if (kind === 'river') renderRiver();
   else if (kind === 'restart') renderRestart();
   else if (kind === 'end') renderEnd();
   else if (kind === 'result') renderResult();
@@ -144,25 +167,22 @@ function closeSheet() {
 }
 
 function renderHelp() {
-  const examples = [
+  const honors = game.stageId === 'honors';
+  const examples = honors ? [{ name: '커쯔', copy: '같은 자패 3장 · 동동동처럼 묶어요', ranks: [1, 1, 1] }] : [
     { name: '슌쯔', copy: '같은 무늬의 연속 숫자 3장', ranks: [2, 3, 4] },
     { name: '커쯔', copy: '무늬와 숫자가 같은 패 3장', ranks: [5, 5, 5] },
     ...(stageOf(game).pair ? [{ name: '머리', copy: '무늬와 숫자가 같은 패 2장', ranks: [7, 7] }] : []),
   ];
-  sheet.innerHTML = sheetFrame('놀이 방법', `<p class="sheet-intro">슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.</p>${examples.map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>패를 골라 <strong>묶음 등록</strong>을 눌러요.</li><li>빈칸은 <strong>공급받기</strong>로 채워요.</li><li>한 장을 고르면 <strong>버림·쯔모</strong>로 바꿔요.</li><li><strong>재조립</strong>에서는 강조된 슬롯을 다시 채워요.</li></ol><details class="more-help"><summary>패산과 연습 규칙</summary><p>${stageOf(game).note}. 버린 패는 다시 섞지 않아요. 마지막 패를 뽑은 뒤 조합을 확인하고 판을 마쳐요.</p><p>재조립은 원래의 몸통·머리 수를 유지하며, 공급이나 버림은 할 수 없어요. 이번 연습에는 자패·타가·울기가 없어요. 작업대 등록은 치·펑과 달라요.</p></details>`, 'close', '<div class="controls"><button class="action secondary" data-action="hint" aria-label="지금 만들 수 있는 묶음 보기">묶음 힌트</button><button class="action primary" data-action="close">계속하기</button></div>');
+  sheet.innerHTML = sheetFrame('놀이 방법', `<p class="sheet-intro">${honors ? '자패는 같은 패끼리만 묶어요. 동·남·서처럼 이어도 슌쯔가 되지 않아요.' : '슌쯔와 커쯔를 모두 ‘몸통’이라고 해요.'}</p>${honors ? `<div class="honor-guide">${HONORS.map((item, index) => `<figure>${miniTile({ suit: 'z', rank: index + 1 })}<figcaption>${item.name}</figcaption></figure>`).join('')}</div>` : ''}${examples.map(item => `<div class="help-example">${miniGroup(item.ranks.map(rank => ({ rank, suit: honors ? 'z' : 'm' })))}<div><strong>${item.name}</strong><p>${item.copy}</p></div></div>`).join('')}<ol class="help-list"><li>패를 골라 <strong>묶음 등록</strong>을 눌러요.</li><li>빈칸은 <strong>공급받기</strong>로 채워요.</li><li>한 장을 고르면 <strong>버림·쯔모</strong>로 바꿔요.</li><li><strong>재조립</strong>에서는 강조된 슬롯을 다시 채워요.</li></ol><details class="more-help"><summary>패산과 연습 규칙</summary><p>${stageOf(game).note}. 버린 패는 다시 섞지 않아요. 마지막 패를 뽑은 뒤 조합을 확인하고 판을 마쳐요.</p><p>재조립은 원래의 몸통·머리 수를 유지하며, 공급이나 버림은 할 수 없어요. 이번 연습에는 타가·울기가 없어요. 작업대 등록은 치·펑과 달라요.</p></details>`, 'close', '<div class="controls"><button class="action secondary" data-action="hint" aria-label="지금 만들 수 있는 묶음 보기">묶음 힌트</button><button class="action primary" data-action="close">계속하기</button></div>');
 }
 
 function renderStages() {
   const records = safeRead(RECORDS, {});
-  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요. 다른 단계로 이동하면 현재 판은 새로 시작해요.</p>${STAGES.map(stage => `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span><strong>${stage.title}</strong><small>${stage.note}</small></span><span class="lesson-badge">${records?.[stage.id]?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron')}</span></button>`).join('')}<p class="saved-note">앞의 두 단계는 점수 없이 모양에만 집중해요.</p>`);
+  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요. 다른 단계로 이동하면 현재 판은 새로 시작해요.</p>${STAGES.map(stage => `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span><strong>${stage.title}</strong><small>${stage.note}</small></span><span class="lesson-badge">${records?.[stage.id]?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron')}</span></button>`).join('')}<p class="saved-note">모양 연습 단계는 점수 없이 익혀요.</p>`);
 }
 
 function renderSettings() {
-  sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="sheet-actions"><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button><button class="action primary" data-action="close">계속하기</button></div><p class="credit">진행 상황은 이 브라우저에 저장돼요.<br>차곡 · 마작 퍼즐<br>패 그림: <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`);
-}
-
-function renderRiver() {
-  sheet.innerHTML = sheetFrame('버린 순서 그대로', `<p class="sheet-intro">왼쪽부터 오른쪽으로, 위에서 아래로 읽어요. 한 번 버린 패는 패산에 다시 섞지 않아요.</p><div class="full-river">${game.discards.map((tile, index) => `<div class="river-item">${miniTile(tile)}<small>${index + 1}</small></div>`).join('')}</div><div class="sheet-actions"><button class="action primary" data-action="close">계속하기</button></div>`);
+  sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="settings-row"><span>자동정렬<small>등록·공급·교체 후 무늬와 숫자순으로 정렬해요.<br>재조립 중에는 패 위치를 유지해요.</small></span><button class="toggle" role="switch" aria-label="자동정렬" aria-checked="${prefs.autoSort}" data-action="auto-sort"></button></div><div class="sheet-actions"><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button></div><p class="credit">진행 상황과 설정은 이 브라우저에 저장돼요.<br>차곡 · 패 그림 <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`, 'close', '<button class="action primary full" data-action="close">계속하기</button>');
 }
 
 function renderRestart() {
@@ -191,9 +211,16 @@ function renderResult() {
   const score = scoreGame(game);
   const next = STAGES[STAGES.findIndex(item => item.id === game.stageId) + 1];
   const records = safeRead(RECORDS, {});
-  sheet.innerHTML = sheetFrame(won ? '한 걸음 더 익숙하게' : '이번 연습의 기록', `<div class="result-hero"><div class="result-mark">${icon(won ? 'spark' : 'rebuild')}</div><p class="eyebrow">${won ? 'STAGE CLEAR' : 'TRY AGAIN'}</p><h3>${won ? (stage.scored ? '탕야오를 만들었어요!' : stage.pair ? '한 손이 완성됐어요!' : '몸통 두 개, 완성!') : '패산을 모두 사용했어요'}</h3><p>${won ? (stage.scored ? '1과 9 없이, 2~8로만 만든 조합이에요.' : '이제 다음 모양도 만나볼까요?') : `${occupied(game)}개의 묶음을 만들었어요. 새 패로 다시 도전해 봐요.`}</p>${score ? `<div class="score-total">${score.total.toLocaleString()}<small>점</small></div>` : ''}</div><div class="result-hand">${game.groups.filter(Boolean).map(miniGroup).join('')}${game.pair ? miniGroup(game.pair) : ''}</div>${score ? `<div class="score-breakdown"><div class="score-row"><span>목표 완성</span><strong>+${score.base.toLocaleString()}</strong></div><div class="score-row"><span>남은 패 ${game.wall.length}장 × 10</span><strong>+${score.remaining}</strong></div></div>${score.bonuses.map(bonus => `<div class="bonus-card"><strong>${bonus.name}<span>+${bonus.points}</span></strong><p>${bonus.description}</p></div>`).join('')}<p class="saved-note">내 최고 기록 ${Number(records?.[stage.id]?.best || score.total).toLocaleString()}점<br>퍼즐 점수예요. 실제 마작의 화료 점수와는 달라요.<br>추가 보너스는 등록한 묶음의 모양을 기준으로 해요.</p>` : ''}<div class="result-meta"><span>공급 ${game.supplies}회</span><span>한 장 교체 ${game.exchanges}회</span><span>남은 패 ${game.wall.length}장</span></div><div class="sheet-actions">${won && next ? `<button class="action primary" data-action="stage" data-stage="${next.id}">다음 단계 · ${next.title}${icon('chevron')}</button>` : ''}<button class="action ${won && next ? 'secondary' : 'primary'}" data-action="restart-confirm">${icon('rebuild')}새 패로 다시 하기</button><button class="text-button" data-action="close">완성한 패 살펴보기</button></div>`);
+  const hand = `<div class="result-hand" aria-label="${won ? '완성한' : '등록한'} 묶음">${slotsMarkup()}</div>`;
+  const bonus = resultBonus === null ? null : score?.bonuses[resultBonus];
+  if (bonus) {
+    sheet.innerHTML = sheetFrame('발견한 모양', `<div class="bonus-detail"><p class="eyebrow">탕야오와 함께 만들었어요</p><h3>${bonus.name}</h3><p class="bonus-points">+${bonus.points}점</p>${hand}<p>${bonus.description}</p><p class="result-note">등록한 묶음에서 발견한 모양이에요.<br>실전에서는 울기 등 성립 조건도 함께 배워요.</p></div>`, 'close', '<button class="action primary full" data-action="result-overview">결과로 돌아가기</button>');
+    return;
+  }
+  const bonusTotal = score?.bonuses.reduce((sum, item) => sum + item.points, 0) || 0;
+  const footer = `<div class="controls"><button class="action ${won && next ? 'secondary' : 'primary'}" data-action="restart-confirm">새 패로 재도전</button>${won && next ? `<button class="action primary" data-action="stage" data-stage="${next.id}" aria-label="다음 단계 · ${next.title}">다음 단계 ${icon('chevron')}</button>` : '<button class="action secondary" data-action="close">패 살펴보기</button>'}</div>`;
+  sheet.innerHTML = sheetFrame(won ? '스테이지 클리어' : '이번 연습의 기록', `<div class="result-hero"><h3>${won ? (stage.scored ? '탕야오를 만들었어요!' : stage.pair ? '한 손이 완성됐어요!' : '몸통 두 개, 완성!') : '패산을 모두 사용했어요'}</h3><p>${won ? (stage.scored ? '1과 9 없이, 2~8로 완성한 한 손' : '한 묶음씩, 모양이 익숙해지고 있어요.') : `${occupied(game)}개의 묶음을 만들었어요. 다시 도전해 봐요.`}</p></div>${score ? `<div class="score-banner"><strong>${score.total.toLocaleString()}<small>점</small></strong><span>내 최고 기록<strong>${Number(records?.[stage.id]?.best || score.total).toLocaleString()}점</strong></span></div>` : ''}${hand}${score ? `<div class="score-breakdown"><div><span>목표 완성</span><strong>+${score.base.toLocaleString()}</strong></div><div><span>남은 패 ${game.wall.length} × 10</span><strong>+${score.remaining}</strong></div><div><span>발견 보너스</span><strong>+${bonusTotal}</strong></div></div><div class="result-bonuses"><p>${score.bonuses.length ? '함께 만든 모양 · 눌러서 알아보기' : '다음엔 다른 역의 모양도 함께 만들어 봐요.'}</p><div>${score.bonuses.map((item, index) => `<button data-action="result-bonus" data-index="${index}">${item.name}<strong>+${item.points}</strong>${icon('chevron')}</button>`).join('')}</div></div><p class="result-note">등록한 묶음의 모양으로 계산한 퍼즐 점수예요.</p>` : `<p class="tutorial-result-note">${won ? '점수 없는 연습이에요.<br>익숙해졌다면 다음 단계로 넘어가 보세요.' : '버림패와 남은 조합을 돌아보고<br>새 패로 다시 연습해 보세요.'}</p>`}<div class="result-meta"><span>공급 <strong>${game.supplies}회</strong></span><span>한 장 교체 <strong>${game.exchanges}회</strong></span><span>남은 패 <strong>${game.wall.length}장</strong></span></div>`, 'close', footer);
 }
-
 function handleClick(event) {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
@@ -212,6 +239,21 @@ function handleClick(event) {
   else if (action === 'exchange') apply(exchange(game, selected[0]));
   else if (action === 'sort') { game = sortTray(game); selected = []; hinted = []; say('무늬와 숫자순으로 정렬했어요.'); remember(); render(); }
   else if (action === 'numbers') { prefs.numbers = !prefs.numbers; safeWrite(PREFS, prefs); render(); renderSettings(); }
+  else if (action === 'auto-sort') {
+    prefs.autoSort = !prefs.autoSort;
+    if (prefs.autoSort) { game = sortTray(game); selected = []; hinted = []; feedback = ''; remember(); }
+    safeWrite(PREFS, prefs); render(); renderSettings();
+    sheet.querySelector('[data-action="auto-sort"]')?.focus({ preventScroll: true });
+  } else if (action === 'river-prev' || action === 'river-next') {
+    const lastPage = Math.max(0, Math.ceil(game.discards.length / riverPageSize) - 1);
+    const current = riverPage === null ? lastPage : riverPage;
+    riverPage = Math.max(0, Math.min(lastPage, current + (action === 'river-next' ? 1 : -1)));
+    renderRiverBoard();
+    root.querySelector(`[data-action="${action}"]:not(:disabled)`)?.focus({ preventScroll: true });
+  } else if (action === 'result-bonus' || action === 'result-overview') {
+    resultBonus = action === 'result-bonus' ? Number(button.dataset.index) : null;
+    renderResult(); sheet.querySelector('#sheet-title')?.focus({ preventScroll: true });
+  }
   else if (action === 'reassemble') {
     const result = beginReassembly(game);
     if (!result.ok) return;
@@ -230,7 +272,7 @@ function handleClick(event) {
   } else if (action === 'restart-confirm') startStage(game.stageId);
   else if (action === 'end-confirm') { game = endRound(game); remember(); render(); openSheet('result'); }
   else if (action === 'close') closeSheet();
-  else if (['help', 'settings', 'stages', 'river', 'restart', 'result', 'end'].includes(action)) openSheet(action);
+  else if (['help', 'settings', 'stages', 'restart', 'result', 'end'].includes(action)) openSheet(action);
 }
 
 root.addEventListener('click', handleClick);

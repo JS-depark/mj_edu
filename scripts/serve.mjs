@@ -11,7 +11,7 @@ createServer(async (request, response) => {
   try {
     const route = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     const target = route === '/' ? '/index.html' : route;
-    if (!allowed.has(target) && !/^\/assets\/tiles\/(?:Man|Pin|Sou)[1-9]\.svg$/.test(target)) { response.writeHead(404); response.end('Not found'); return; }
+    if (!allowed.has(target) && !/^\/assets\/tiles\/(?:(?:Man|Pin|Sou)[1-9]|Ton|Nan|Shaa|Pei|Haku|Hatsu|Chun)\.svg$/.test(target)) { response.writeHead(404); response.end('Not found'); return; }
     const path = resolve(root, `.${target}`);
     if (!path.startsWith(resolve(root) + sep)) { response.writeHead(403); response.end(); return; }
     const body = await readFile(path);

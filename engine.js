@@ -1,12 +1,21 @@
 export const STAGES = [
   { id: 'shapes', number: '01', title: '몸통 만들기', tag: '모양 익히기', description: '패 3장을 묶어 몸통 2개를 만들어 보세요.', bodies: 2, pair: false, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' },
   { id: 'hand', number: '02', title: '한 손 완성하기', tag: '구조 익히기', description: '몸통 4개와 같은 패 2장인 머리를 만들어요.', bodies: 4, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' },
-  { id: 'tanyao', number: '03', title: '첫 번째 역, 탕야오', tag: '역 만들기', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 남은 패 + 발견 보너스' },
+  { id: 'honors', number: '03', title: '자패 익히기', tag: '일곱 자패', description: '같은 자패 3장으로 몸통 2개를 만들어요.', bodies: 2, pair: false, suits: ['z'], scored: false, note: '자패 28장 · 점수 없는 연습' },
+  { id: 'tanyao', number: '04', title: '첫 번째 역, 탕야오', tag: '역 만들기', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 남은 패 + 발견 보너스' },
 ];
 
+export const HONORS = [
+  { name: '동', asset: 'Ton' }, { name: '남', asset: 'Nan' },
+  { name: '서', asset: 'Shaa' }, { name: '북', asset: 'Pei' },
+  { name: '백', asset: 'Haku' }, { name: '발', asset: 'Hatsu' }, { name: '중', asset: 'Chun' },
+];
 export const suitNames = { m: '만', p: '통', s: '삭' };
-export const tileName = tile => `${tile.rank}${suitNames[tile.suit]}`;
-export const tileOrder = (a, b) => 'mps'.indexOf(a.suit) - 'mps'.indexOf(b.suit) || a.rank - b.rank || a.id.localeCompare(b.id);
+export const tileName = tile => tile.suit === 'z' ? HONORS[tile.rank - 1]?.name : `${tile.rank}${suitNames[tile.suit]}`;
+export const tileAsset = tile => tile.suit === 'z' ? HONORS[tile.rank - 1]?.asset : `${{ m: 'Man', p: 'Pin', s: 'Sou' }[tile.suit]}${tile.rank}`;
+export const tileOrder = (a, b) => 'mpsz'.indexOf(a.suit) - 'mpsz'.indexOf(b.suit) || a.rank - b.rank || a.id.localeCompare(b.id);
+export const isSimple = tile => tile.suit !== 'z' && tile.rank >= 2 && tile.rank <= 8;
+export const makeTiles = suits => suits.flatMap(suit => Array.from({ length: suit === 'z' ? 7 : 9 }, (_, rank) => Array.from({ length: 4 }, (_, copy) => ({ id: `${suit}${rank + 1}-${copy}`, suit, rank: rank + 1 }))).flat());
 export const stageOf = state => STAGES.find(stage => stage.id === state.stageId);
 export const occupied = state => state.groups.filter(Boolean).length + Number(Boolean(state.pair));
 
@@ -17,7 +26,7 @@ export function seededRandom(seed) {
 
 export function createGame(stageId = 'shapes', seed = Date.now()) {
   const stage = STAGES.find(item => item.id === stageId) || STAGES[0];
-  const wall = stage.suits.flatMap(suit => Array.from({ length: 9 }, (_, rank) => Array.from({ length: 4 }, (_, copy) => ({ id: `${suit}${rank + 1}-${copy}`, suit, rank: rank + 1 }))).flat());
+  const wall = makeTiles(stage.suits);
   const random = seededRandom(seed);
   for (let index = wall.length - 1; index > 0; index--) {
     const swap = Math.floor(random() * (index + 1));
@@ -32,7 +41,7 @@ export function classify(tiles) {
   const sorted = [...tiles].sort(tileOrder);
   if (!sorted.every(tile => tile.suit === sorted[0].suit)) return null;
   if (sorted.every(tile => tile.rank === sorted[0].rank)) return tiles.length === 2 ? 'pair' : 'triplet';
-  if (tiles.length === 3 && sorted[1].rank === sorted[0].rank + 1 && sorted[2].rank === sorted[0].rank + 2) return 'sequence';
+  if (sorted[0].suit !== 'z' && tiles.length === 3 && sorted[1].rank === sorted[0].rank + 1 && sorted[2].rank === sorted[0].rank + 2) return 'sequence';
   return null;
 }
 
@@ -41,9 +50,9 @@ export function registration(state, ids) {
   if (new Set(ids).size !== ids.length) return { ok: false, message: '서로 다른 패를 골라 주세요.' };
   const tiles = ids.map(id => state.tray.find(tile => tile?.id === id));
   const kind = classify(tiles);
-  if (!kind) return { ok: false, message: ids.length === 1 ? '한 장은 버리고 뽑을 수 있어요.' : '연속 숫자 3장 또는 같은 패를 골라 주세요.' };
+  if (!kind) return { ok: false, message: ids.length === 1 ? '한 장은 버리고 뽑을 수 있어요.' : tiles.some(tile => tile?.suit === 'z') ? '자패는 같은 패끼리만 묶을 수 있어요.' : '연속 숫자 3장 또는 같은 패를 골라 주세요.' };
   const stage = stageOf(state);
-  if (stage.scored && tiles.some(tile => tile.rank === 1 || tile.rank === 9)) return { ok: false, message: '탕야오에는 1과 9를 사용할 수 없어요.' };
+  if (stage.id === 'tanyao' && tiles.some(tile => !isSimple(tile))) return { ok: false, message: '탕야오에는 1·9와 자패를 사용할 수 없어요.' };
   if (kind === 'pair' && (!stage.pair || state.pair || (state.edit && !state.edit.hadPair))) return { ok: false, message: !stage.pair ? '이번에는 3장짜리 몸통을 만들어요.' : '머리 자리는 이미 채웠어요.' };
   const maxBodies = state.edit ? state.edit.bodyCount : stage.bodies;
   if (kind !== 'pair' && state.groups.filter(Boolean).length >= maxBodies) return { ok: false, message: '몸통 자리는 모두 채웠어요.' };
@@ -167,7 +176,7 @@ export function scoreGame(state) {
   else if (identicalPairs === 1) bonuses.push({ name: '이페코 모양', points: 150, description: '같은 무늬, 같은 숫자의 슌쯔가 두 묶음이에요.' });
   if (groups.every(group => classify(group) === 'triplet')) bonuses.push({ name: '또이또이 모양', points: 250, description: '네 몸통을 모두 같은 패 세 장인 커쯔로 만들었어요.' });
   const all = [...groups.flat(), ...state.pair];
-  if (new Set(all.map(tile => tile.suit)).size === 1) bonuses.push({ name: '청일색 모양', points: 300, description: '몸통과 머리를 모두 한 가지 무늬로 만들었어요.' });
+  if (all.every(tile => tile.suit !== 'z') && new Set(all.map(tile => tile.suit)).size === 1) bonuses.push({ name: '청일색 모양', points: 300, description: '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.' });
   if (sequences.some(group => ['m', 'p', 's'].every(suit => sequences.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) bonuses.push({ name: '삼색동순 모양', points: 200, description: '만·통·삭으로 같은 숫자의 슌쯔를 만들었어요.' });
   const base = 1000;
   const remaining = state.wall.length * 10;
@@ -181,7 +190,7 @@ export function validSavedGame(state) {
     if (!Array.isArray(state.wall) || !Array.isArray(state.discards)) return false;
     if (state.groups.some(group => group && !['sequence', 'triplet'].includes(classify(group)))) return false;
     if (state.pair && (!stage.pair || classify(state.pair) !== 'pair')) return false;
-    if (stage.scored && [...state.groups.filter(Boolean).flat(), ...(state.pair || [])].some(tile => tile.rank < 2 || tile.rank > 8)) return false;
+    if (stage.id === 'tanyao' && [...state.groups.filter(Boolean).flat(), ...(state.pair || [])].some(tile => !isSimple(tile))) return false;
     const all = [...state.wall, ...state.tray.filter(Boolean), ...state.groups.filter(Boolean).flat(), ...(state.pair || []), ...state.discards];
     const expected = new Set(createGame(stage.id, 1).wall.concat(createGame(stage.id, 1).tray).map(tile => tile.id));
     if (all.length !== expected.size || new Set(all.map(tile => tile.id)).size !== expected.size) return false;

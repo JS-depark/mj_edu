@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
+import { STAGES, HONORS, makeTiles, tileName, tileAsset, tileOrder, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
 
 function fixture(stageId, { tray = [], groups = [], pair = null, remaining = null, status = 'playing' } = {}) {
   const game = createGame(stageId, 777);
@@ -23,7 +23,7 @@ const ids = state => state.tray.filter(Boolean).map(tile => tile.id);
 function inventory(state) {
   const stage = STAGES.find(item => item.id === state.stageId);
   const all = [...state.wall, ...state.tray.filter(Boolean), ...state.groups.filter(Boolean).flat(), ...(state.pair || []), ...state.discards];
-  assert.equal(all.length, stage.suits.length * 36);
+  assert.equal(all.length, stage.suits.reduce((sum, suit) => sum + (suit === 'z' ? 28 : 36), 0));
   assert.equal(new Set(all.map(tile => tile.id)).size, all.length);
   const counts = new Map();
   for (const tile of all) { const key = `${tile.suit}${tile.rank}`; counts.set(key, (counts.get(key) || 0) + 1); }
@@ -182,7 +182,7 @@ test('corrupt browser saves are rejected', () => {
   assert.equal(validSavedGame({ ...game, exchanges: '<script>' }), false);
 });
 
-test('180 random mechanical games conserve every tile through registration, refill and exchanges', () => {
+test('240 random mechanical games conserve every tile through registration, refill and exchanges', () => {
   for (const stage of STAGES) for (let seed = 1; seed <= 60; seed++) {
     let game = createGame(stage.id, seed * 7919);
     const random = seededRandom(seed);
@@ -197,4 +197,45 @@ test('180 random mechanical games conserve every tile through registration, refi
     }
     assert.notEqual(game.status, 'playing');
   }
+});
+
+test('honours add seven kinds with four copies each and a complete set has 136 tiles', () => {
+  const tiles = makeTiles(['m', 'p', 's', 'z']);
+  assert.equal(tiles.length, 136);
+  assert.equal(new Set(tiles.map(tile => tile.id)).size, 136);
+  const honors = tiles.filter(tile => tile.suit === 'z');
+  assert.equal(honors.length, 28);
+  for (let rank = 1; rank <= 7; rank++) assert.equal(honors.filter(tile => tile.rank === rank).length, 4);
+  assert.deepEqual(honors.filter((_, i) => i % 4 === 0).map(tileName), ['동', '남', '서', '북', '백', '발', '중']);
+  assert.deepEqual(honors.filter((_, i) => i % 4 === 0).map(tileAsset), HONORS.map(item => item.asset));
+  assert.equal([...tiles].reverse().sort(tileOrder).at(-1).id, 'z7-3');
+  const game = createGame('honors', 123);
+  assert.equal(game.wall.length, 15);
+  assert.ok(validSavedGame(game));
+  inventory(game);
+});
+
+test('honours form identical pairs and triplets, never wind or dragon sequences', () => {
+  const tiles = makeTiles(['z']);
+  const byRanks = ranks => ranks.map((rank, i) => ({ ...tiles.find(tile => tile.rank === rank), id: `test-${i}` }));
+  assert.equal(classify(byRanks([1, 2, 3])), null);
+  assert.equal(classify(byRanks([5, 6, 7])), null);
+  assert.equal(classify(byRanks([5, 5])), 'pair');
+  assert.equal(classify(byRanks([7, 7, 7])), 'triplet');
+  const game = fixture('honors', { tray: ['z7', 'z7', 'z7', 'z1', 'z1', 'z1'] });
+  const first = register(game, ids(game).slice(0, 3)).state;
+  const won = register(first, ids(first)).state;
+  assert.equal(won.status, 'won');
+  assert.equal(scoreGame(won), null);
+  inventory(won);
+});
+
+test('honour ranks are not numeric simple tiles for tanyao', () => {
+  const game = createGame('tanyao', 88);
+  const souths = makeTiles(['z']).filter(tile => tile.rank === 2).slice(0, 3);
+  game.tray.splice(0, 3, ...souths);
+  const match = registration(game, souths.map(tile => tile.id));
+  assert.equal(match.ok, false);
+  assert.match(match.message, /자패/);
+  assert.equal(validSavedGame(game), false);
 });
