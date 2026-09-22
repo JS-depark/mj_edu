@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { STAGES, createGame, validSavedGame } from '../engine.js';
 
 const fixtures = {};
-function fixture(stage, groups, pair, discards, status) {
+function fixture(stage, groups, pair, discards, status, trayCodes = []) {
   const game = createGame(stage, 1234);
   const pool = [...game.tray, ...game.wall];
   const take = code => {
@@ -14,7 +14,7 @@ function fixture(stage, groups, pair, discards, status) {
   };
   game.groups = game.groups.map((_, i) => groups[i]?.map(take) || null);
   game.pair = pair?.map(take) || null;
-  game.tray = pool.splice(0, 13);
+  game.tray = [...trayCodes.map(take), ...pool.splice(0, 13 - trayCodes.length)];
   game.discards = pool.splice(0, discards);
   game.wall = pool;
   game.exchanges = discards;
@@ -33,6 +33,14 @@ fixtures.pairs = fixture('pairs', [['m2','m3','m4'], ['m5','m5','m5']], ['m7','m
 fixtures.oldscore = fixtures.bonus;
 fixtures.sequence = fixture('sequences', [], null, 0, 'playing');
 fixtures.triplet = fixture('triplets', [], null, 0, 'playing');
+fixtures.lessons = createGame('tanyao', 4567);
+fixtures.iipeikou = fixture('iipeikou', [['m2','m3','m4'], ['m2','m3','m4'], ['p2','p3','p4'], ['s2','s3','s4']], ['p6','p6'], 20, 'won');
+fixtures.toitoi = fixture('toitoi', [['m2','m2','m2'], ['m4','m4','m4'], ['m6','m6','m6'], ['m8','m8','m8']], ['m5','m5'], 20, 'won');
+fixtures.chinitsu = fixture('chinitsu', [['m2','m3','m4'], ['m2','m3','m4'], ['m5','m6','m7'], ['m5','m6','m7']], ['m8','m8'], 20, 'won');
+fixtures.upgrade = { ...structuredClone(fixtures.chinitsu), stageId: 'iipeikou' };
+fixtures.pending_chinitsu = fixture('chinitsu', [['m1','m2','m3'], ['m4','m5','m6'], ['m7','m7','m7'], ['m8','m8','m8']], ['p9','p9'], 0, 'playing', ['m9','m9']);
+fixtures.pending_iipeikou = fixture('iipeikou', [['m1','m2','m3'], ['p4','p5','p6'], ['s7','s8','s9'], ['m8','m8','m8']], ['p9','p9'], 0, 'playing', ['m1','m2','m3']);
+fixtures.pending_toitoi = fixture('toitoi', [['m1','m1','m1'], ['p4','p5','p6'], ['s7','s7','s7'], ['m8','m8','m8']], ['p9','p9'], 0, 'playing', ['p2','p2','p2']);
 const assets = new Map([['/app.js','text/javascript'], ['/engine.js','text/javascript'], ['/styles.css','text/css'], ['/favicon.svg','image/svg+xml']]);
 createServer(async (request, response) => {
   try {
@@ -42,8 +50,8 @@ createServer(async (request, response) => {
       let html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
       if (game) {
         const firstVisit = url.searchParams.get('case') === 'intro';
-        const prefs = firstVisit ? {} : { introSeen: true, lessonsSeen: STAGES.map(stage => stage.id) };
-        const records = url.searchParams.get('case') === 'oldscore' ? { tanyao: { completed: true, best: 9990 } } : {};
+        const prefs = firstVisit ? {} : { introSeen: true, lessonsSeen: url.searchParams.get('case') === 'lessons' ? [] : STAGES.map(stage => stage.id) };
+        const records = url.searchParams.get('case') === 'oldscore' ? { tanyao: { completed: true, best: 9990, bestByScoreVersion: { 2: 8880 } } } : {};
         const storage = firstVisit ? "localStorage.removeItem('chagok-v1');" : `localStorage.setItem('chagok-v1', ${JSON.stringify(JSON.stringify(game))});`;
         html = html.replace('<script type="module"', `<script>${storage}localStorage.setItem('chagok-preferences-v1',${JSON.stringify(JSON.stringify(prefs))});localStorage.setItem('chagok-records-v1',${JSON.stringify(JSON.stringify(records))});</script><script type="module"`);
       }

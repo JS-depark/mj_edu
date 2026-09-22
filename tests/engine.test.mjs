@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, HONORS, SCORE_VERSION, YAKU_VALUES, stageOf, makeTiles, tileName, tileAsset, tileOrder, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
+import { STAGES, HONORS, SCORE_VERSION, BONUS_PER_HAN, YAKU_VALUES, goalStatus, detectYaku, stageOf, makeTiles, tileName, tileAsset, tileOrder, createGame, classify, register, registration, supply, exchange, beginReassembly, releaseGroup, finishReassembly, cancelReassembly, canFinishReassembly, findGroup, endRound, scoreGame, validSavedGame, seededRandom } from '../engine.js';
 
 function fixture(stageId, { tray = [], groups = [], pair = null, remaining = null, status = 'playing' } = {}) {
   const game = createGame(stageId, 777);
@@ -166,18 +166,18 @@ test('structural bonuses combine only compatible registered shapes', () => {
   const double = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['m2', 'm3', 'm4'], ['m5', 'm6', 'm7'], ['m5', 'm6', 'm7']], pair: ['m8', 'm8'], status: 'won' });
   const score = scoreGame(double);
   assert.deepEqual(score.bonuses.map(bonus => bonus.name), ['량페코', '청일색']);
-  assert.equal(score.total, 1000 + double.wall.length * 10 + 90);
+  assert.equal(score.total, 1000 + double.wall.length * 10 + 900);
   assert.equal(score.version, SCORE_VERSION);
   assert.equal(score.bonusHan, 9);
-  assert.deepEqual(score.bonuses.map(bonus => [bonus.han, bonus.openHan, bonus.points]), [[3, null, 30], [6, 5, 60]]);
+  assert.deepEqual(score.bonuses.map(bonus => [bonus.han, bonus.openHan, bonus.points]), [[3, null, 300], [6, 5, 600]]);
   const triple = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['p2', 'p3', 'p4'], ['s2', 's3', 's4'], ['s6', 's7', 's8']], pair: ['p5', 'p5'], status: 'won' });
   assert.deepEqual(scoreGame(triple).bonuses.map(bonus => bonus.name), ['삼색동순']);
-  assert.equal(scoreGame(triple).bonuses[0].points, 20);
+  assert.equal(scoreGame(triple).bonuses[0].points, 200);
   const triplets = fixture('tanyao', { groups: [['m2', 'm2', 'm2'], ['p4', 'p4', 'p4'], ['s6', 's6', 's6'], ['m8', 'm8', 'm8']], pair: ['p5', 'p5'], status: 'won' });
   assert.deepEqual(scoreGame(triplets).bonuses.map(bonus => bonus.name), ['또이또이']);
-  assert.equal(scoreGame(triplets).bonuses[0].points, 20);
+  assert.equal(scoreGame(triplets).bonuses[0].points, 200);
   const single = fixture('tanyao', { groups: [['m2','m3','m4'], ['m2','m3','m4'], ['p5','p6','p7'], ['s6','s7','s8']], pair: ['p2','p2'], status: 'won' });
-  assert.equal(scoreGame(single).bonuses[0].points, 10);
+  assert.equal(scoreGame(single).bonuses[0].points, 100);
 });
 
 test('corrupt browser saves are rejected', () => {
@@ -278,4 +278,111 @@ test('head lesson needs a pair in addition to both bodies; older mixed lessons s
   assert.equal(register(legacy, ids(legacy)).state.status, 'won');
   assert.equal(STAGES.some(stage => stage.id === 'shapes'), false);
   assert.equal(Object.keys(YAKU_VALUES).length, 12);
+});
+
+test('each new yaku goal clears only when its condition and all five slots are complete', () => {
+  const cases = [
+    { id: 'iipeikou', groups: [['m1','m2','m3'], ['m3','m1','m2'], ['p4','p5','p6'], ['s9','s9','s9']], pair: ['p7','p7'] },
+    { id: 'toitoi', groups: [['m1','m1','m1'], ['p3','p3','p3'], ['s5','s5','s5'], ['m7','m7','m7']], pair: ['p9','p9'] },
+    { id: 'chinitsu', groups: [['p1','p2','p3'], ['p4','p5','p6'], ['p7','p7','p7'], ['p8','p8','p8']], pair: ['p9','p9'] },
+  ];
+  for (const { id, groups, pair } of cases) {
+    const game = fixture(id, { groups, tray: pair });
+    assert.ok(validSavedGame(game));
+    assert.equal(goalStatus(game).complete, false);
+    const won = register(game, ids(game)).state;
+    assert.equal(won.status, 'won', id);
+    assert.ok(validSavedGame(won));
+    const score = scoreGame(won);
+    assert.equal(score.target.id, id);
+    assert.equal(score.bonuses.length, 0);
+    assert.equal(score.total, 1000 + won.wall.length * 10);
+    assert.equal(score.version, 3);
+    inventory(won);
+  }
+});
+
+test('full non-goal hands remain playable and resumable without awarding a score', () => {
+  for (const stageId of ['iipeikou', 'toitoi', 'chinitsu']) {
+    const game = fixture(stageId, { groups: [['m1','m2','m3'], ['p2','p3','p4'], ['s5','s6','s7'], ['m8','m8','m8']], tray: ['p9','p9','s1'] });
+    const full = register(game, ids(game).slice(0, 2)).state;
+    assert.equal(full.status, 'playing');
+    assert.equal(goalStatus(full).full, true);
+    assert.equal(goalStatus(full).complete, false);
+    assert.ok(validSavedGame(full));
+    assert.equal(scoreGame(full), null);
+    assert.equal(scoreGame({ ...full, status: 'won' }), null);
+    assert.equal(validSavedGame({ ...full, status: 'won' }), false);
+    const supplied = supply(full);
+    assert.equal(supplied.ok, true);
+    const exchanged = exchange(supplied.state, ids(supplied.state)[0]);
+    assert.equal(exchanged.ok, true);
+    assert.equal(exchanged.state.status, 'playing');
+    assert.ok(validSavedGame(exchanged.state));
+    inventory(exchanged.state);
+  }
+});
+
+test('reassembly commits a goal win without refilling, even after the last wall tile', () => {
+  const game = fixture('chinitsu', { groups: [['m1','m2','m3'], ['m4','m5','m6'], ['m7','m7','m7'], ['m8','m8','m8']], pair: ['p9','p9'], tray: ['m9','m9','s1'], remaining: 0 });
+  assert.ok(validSavedGame(game));
+  assert.equal(goalStatus(game).complete, false, 'the head must use the same suit too');
+  let edit = releaseGroup(beginReassembly(game).state, 'pair').state;
+  assert.equal(supply(edit).ok, false);
+  edit = register(edit, edit.tray.filter(tile => tile?.suit === 'm' && tile.rank === 9).map(tile => tile.id)).state;
+  assert.equal(goalStatus(edit).complete, true);
+  assert.equal(edit.status, 'playing', 'no win before confirming reassembly');
+  assert.equal(scoreGame(edit), null);
+  assert.deepEqual(cancelReassembly(edit), game);
+  const won = finishReassembly(edit).state;
+  assert.equal(won.status, 'won');
+  assert.equal(won.wall.length, 0);
+  assert.equal(won.tray.filter(Boolean).length, game.tray.filter(Boolean).length);
+  assert.equal(won.supplies, game.supplies);
+  assert.equal(scoreGame(won).total, 1000);
+  assert.equal(endRound(won).status, 'won');
+  assert.ok(validSavedGame(won));
+  inventory(won);
+});
+
+test('reassembly can replace a complete body to satisfy Iipeikou or Toitoi', () => {
+  for (const [stageId, groups, replacement] of [
+    ['iipeikou', [['m1','m2','m3'], ['p4','p5','p6'], ['s7','s8','s9'], ['m8','m8','m8']], ['m1','m2','m3']],
+    ['toitoi', [['m1','m1','m1'], ['p4','p5','p6'], ['s7','s7','s7'], ['m8','m8','m8']], ['p2','p2','p2']],
+  ]) {
+    const game = fixture(stageId, { groups, pair: ['p9','p9'], tray: replacement });
+    let edit = releaseGroup(beginReassembly(game).state, 1).state;
+    edit = register(edit, ids(game)).state;
+    assert.equal(canFinishReassembly(edit), true);
+    const won = finishReassembly(edit).state;
+    assert.equal(won.status, 'won');
+    assert.ok(validSavedGame(won));
+    inventory(won);
+  }
+});
+
+test('shared detection excludes the target from bonuses and counts compatible discoveries at 100 per han', () => {
+  assert.equal(BONUS_PER_HAN, 100);
+  const game = fixture('iipeikou', { groups: [['m2','m3','m4'], ['m4','m2','m3'], ['p2','p3','p4'], ['s2','s3','s4']], pair: ['p6','p6'], status: 'won' });
+  assert.deepEqual(detectYaku(game).map(yaku => yaku.id), ['tanyao','iipeikou','sanshokuDoujun']);
+  const score = scoreGame(game);
+  assert.deepEqual(score.bonuses.map(yaku => yaku.id), ['tanyao','sanshokuDoujun']);
+  assert.equal(score.bonusPoints, 300);
+  assert.equal(score.bonusHan, 3);
+  assert.equal(score.total, 1000 + game.wall.length * 10 + 300);
+  assert.deepEqual(detectYaku({ ...game, pair: null }), []);
+});
+
+test('Ryanpeikou satisfies the Iipeikou lesson as a single upgraded target shape', () => {
+  const groups = [['m2','m3','m4'], ['m2','m3','m4'], ['m5','m6','m7'], ['m5','m6','m7']];
+  const game = fixture('iipeikou', { groups, tray: ['m8','m8'] });
+  const won = register(game, ids(game)).state;
+  assert.equal(won.status, 'won');
+  const score = scoreGame(won);
+  assert.equal(score.target.id, 'ryanpeikou');
+  assert.deepEqual(score.bonuses.map(yaku => yaku.id), ['tanyao','chinitsu']);
+  assert.equal(score.bonusPoints, 700);
+  const chinitsu = fixture('chinitsu', { groups, pair: ['m8','m8'], status: 'won' });
+  assert.deepEqual(scoreGame(chinitsu).bonuses.map(yaku => yaku.id), ['tanyao','ryanpeikou']);
+  assert.equal(scoreGame(chinitsu).bonusPoints, 400);
 });

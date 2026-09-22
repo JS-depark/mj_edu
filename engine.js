@@ -5,12 +5,16 @@ export const STAGES = [
   { id: 'pairs', number: '04', title: '머리 하나 더하기', tag: '기초 · 같은 패 두 장', description: '몸통 2개와 같은 패 2장인 머리 1개를 만들어요.', bodies: 2, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 몸통 2개 + 머리' },
   { id: 'mixed', number: '05', title: '세 무늬 구분하기', tag: '기초 · 만수·삭수·통수', description: '한 묶음은 같은 무늬로! 몸통 2개와 머리를 만들어요.', bodies: 2, pair: true, suits: ['m', 'p', 's'], scored: false, note: '수패 108장 · 무늬를 섞지 않아요' },
   { id: 'hand', number: '06', title: '한 손 완성하기', tag: '기초 · 네 몸통과 머리', description: '몸통 4개와 머리 1개, 총 14장을 완성해요.', bodies: 4, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 한 손의 구조' },
-  { id: 'tanyao', number: '07', title: '첫 번째 역, 탕야오', tag: '역 만들기', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 여기부터 점수 기록' },
+  { id: 'tanyao', number: '07', title: '첫 번째 역, 탕야오', tag: '역 만들기', target: 'tanyao', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 2~8만 사용' },
+  { id: 'iipeikou', number: '08', title: '같은 슌쯔, 이페코', tag: '역 만들기', target: 'iipeikou', description: '똑같은 슌쯔 한 쌍을 포함해 한 손을 완성해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 같은 슌쯔 한 쌍' },
+  { id: 'toitoi', number: '09', title: '커쯔로 또이또이', tag: '역 만들기', target: 'toitoi', description: '몸통 4개를 모두 커쯔로 만들고 머리를 더해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 커쯔 네 개' },
+  { id: 'chinitsu', number: '10', title: '한 무늬로 청일색', tag: '역 만들기', target: 'chinitsu', description: '만·삭·통 중 한 무늬로 몸통과 머리를 완성해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 한 무늬로 통일' },
 ];
 
 // Old mixed-body lessons can still be resumed without redefining their rules.
 const LEGACY_STAGES = [{ id: 'shapes', number: '01', title: '몸통 만들기', tag: '이전 모양 연습', description: '슌쯔 또는 커쯔로 몸통 2개를 만들어요.', bodies: 2, pair: false, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' }];
-export const SCORE_VERSION = 2;
+export const SCORE_VERSION = 3;
+export const BONUS_PER_HAN = 100;
 // Closed-hand values are the learning reference; null means closed-only.
 export const YAKU_VALUES = {
   tanyao: { name: '탕야오', han: 1, openHan: 1 },
@@ -84,8 +88,7 @@ export function registration(state, ids) {
 
 const failure = (state, message) => ({ state, ok: false, message });
 function completeIfReady(state) {
-  const stage = stageOf(state);
-  if (!state.edit && state.groups.every(Boolean) && (!stage.pair || state.pair)) state.status = 'won';
+  if (!state.edit && goalStatus(state).complete) state.status = 'won';
   return state;
 }
 
@@ -100,7 +103,9 @@ export function register(state, ids) {
     next.groups[index] = match.tiles;
   }
   next.exchangeStreak = 0;
-  return { state: completeIfReady(next), ok: true, message: `${match.message.split(' · ')[0]}를 등록했어요.` };
+  completeIfReady(next);
+  const goal = goalStatus(next);
+  return { state: next, ok: true, message: !next.edit && goal.full && !goal.complete ? '묶음은 채웠어요. 재조립으로 목표 역을 만들어 봐요.' : `${match.message.split(' · ')[0]}를 등록했어요.` };
 }
 
 export function supply(state) {
@@ -164,7 +169,8 @@ export function finishReassembly(state) {
   // Reassembly neither creates tray capacity nor awards another refill.
   next.tray = [...tiles, ...Array(13 - tiles.length).fill(null)];
   next.edit = null;
-  return { state: next, ok: true, message: '재조립을 마쳤어요. 공급대의 빈자리 수는 그대로예요.' };
+  completeIfReady(next);
+  return { state: next, ok: true, message: next.status === 'won' ? '재조립으로 목표 역을 완성했어요!' : '재조립을 마쳤어요. 공급대의 빈자리 수는 그대로예요.' };
 }
 
 export const cancelReassembly = state => state.edit ? structuredClone(state.edit.snapshot) : state;
@@ -187,25 +193,54 @@ export function findGroup(state) {
   return [];
 }
 
-export function scoreGame(state) {
-  if (!stageOf(state).scored || state.status !== 'won') return null;
-  const groups = state.groups;
+// One registered decomposition drives goal checks and bonus discovery alike.
+export function detectYaku(state) {
+  if (state.groups?.length !== 4 || state.groups.some(group => !group || !['sequence', 'triplet'].includes(classify(group))) || classify(state.pair || []) !== 'pair') return [];
+  const groups = state.groups.map(group => [...group].sort(tileOrder));
   const sequences = groups.filter(group => classify(group) === 'sequence');
   const bySequence = new Map();
   for (const group of sequences) { const key = group.map(tile => `${tile.suit}${tile.rank}`).join(); bySequence.set(key, (bySequence.get(key) || 0) + 1); }
   const identicalPairs = [...bySequence.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
-  const bonuses = [];
-  const add = (id, description) => bonuses.push({ id, ...YAKU_VALUES[id], points: YAKU_VALUES[id].han * 10, description });
+  const found = [];
+  const add = (id, description) => found.push({ id, ...YAKU_VALUES[id], description });
+  const all = [...groups.flat(), ...state.pair];
+  if (all.every(isSimple)) add('tanyao', '몸통과 머리를 모두 2~8 숫자패로 만들었어요.');
   if (identicalPairs >= 2) add('ryanpeikou', '같은 슌쯔 두 묶음이 두 쌍 있어요. 이페코와 중복해서 세지 않아요.');
   else if (identicalPairs === 1) add('iipeikou', '같은 무늬, 같은 숫자의 슌쯔가 두 묶음이에요.');
   if (groups.every(group => classify(group) === 'triplet')) add('toitoi', '네 몸통을 모두 같은 패 세 장인 커쯔로 만들었어요.');
-  const all = [...groups.flat(), ...state.pair];
   if (all.every(tile => tile.suit !== 'z') && new Set(all.map(tile => tile.suit)).size === 1) add('chinitsu', '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.');
   if (sequences.some(group => ['m', 'p', 's'].every(suit => sequences.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) add('sanshokuDoujun', '만·통·삭으로 같은 숫자의 슌쯔를 만들었어요.');
+  return found;
+}
+
+export function goalStatus(state) {
+  const stage = stageOf(state);
+  const full = state.groups.every(Boolean) && (!stage.pair || Boolean(state.pair));
+  const found = stage.scored && full ? detectYaku(state) : [];
+  // Ryanpeikou includes the matching-sequence pair taught by the Iipeikou goal.
+  const target = found.find(yaku => yaku.id === stage.target || (stage.target === 'iipeikou' && yaku.id === 'ryanpeikou')) || null;
+  const complete = full && (!stage.scored || Boolean(target));
+  const missing = {
+    tanyao: '재조립으로 1·9를 빼고 2~8만 남겨요.',
+    iipeikou: '재조립으로 같은 무늬·숫자의 슌쯔 한 쌍을 만들어요.',
+    toitoi: '재조립으로 슌쯔를 바꿔 네 몸통 모두 커쯔로 만들어요.',
+    chinitsu: '재조립으로 머리까지 한 가지 무늬로 맞춰요.',
+  };
+  return { full, complete, target, found, message: full && !complete ? missing[stage.target] : stage.description };
+}
+
+export function scoreGame(state) {
+  if (!stageOf(state)?.scored || state.status !== 'won' || state.edit) return null;
+  const goal = goalStatus(state);
+  if (!goal.complete) return null;
+  // The shape satisfying the goal is covered by the fixed completion award.
+  // An upgraded goal shape also occupies that role, never two yaku awards.
+  const bonuses = goal.found.filter(yaku => yaku.id !== goal.target.id).map(yaku => ({ ...yaku, points: yaku.han * BONUS_PER_HAN }));
   const base = 1000;
   const remaining = state.wall.length * 10;
   const bonusHan = bonuses.reduce((sum, bonus) => sum + bonus.han, 0);
-  return { version: SCORE_VERSION, base, remaining, bonuses, bonusHan, total: base + remaining + bonusHan * 10 };
+  const bonusPoints = bonusHan * BONUS_PER_HAN;
+  return { version: SCORE_VERSION, base, remaining, target: goal.target, bonuses, bonusHan, bonusPoints, bonusPerHan: BONUS_PER_HAN, total: base + remaining + bonusPoints };
 }
 
 export function validSavedGame(state) {
@@ -222,7 +257,7 @@ export function validSavedGame(state) {
     if (all.length !== expected.size || new Set(all.map(tile => tile.id)).size !== expected.size) return false;
     if (!all.every(tile => expected.has(tile.id) && tile.id.startsWith(`${tile.suit}${tile.rank}-`))) return false;
     if (!['supplies', 'exchanges', 'exchangeStreak', 'longestExchangeStreak'].every(key => Number.isInteger(state[key]) && state[key] >= 0)) return false;
-    const full = state.groups.every(Boolean) && (!stage.pair || Boolean(state.pair));
-    return (state.status !== 'won' || full) && (state.status !== 'playing' || !full) && (state.status !== 'lost' || state.wall.length === 0);
+    const complete = goalStatus(state).complete;
+    return (state.status !== 'won' || complete) && (state.status !== 'playing' || !complete) && (state.status !== 'lost' || (state.wall.length === 0 && !complete));
   } catch { return false; }
 }
