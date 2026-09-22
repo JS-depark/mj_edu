@@ -335,64 +335,42 @@ dialog[data-view="settings"] .sheet-actions { display:grid; grid-template-column
   .intro-tip { font-size:12px; margin:8px 0; }
 }
 
-/* Reserve four discard rows first. Content, selection and slot count cannot
-   change the other regions' height. Queries use space inside the safe areas. */
-.game-shell { container:game / size; gap:0; }
-.game-shell > .workbench,.game-shell > .river-section,.game-shell > .play-zone { margin-top:4px; }
-.game-shell > .lesson-panel { flex:0 0 86px; }
+/* Measured once per viewport size, independent of stage and selected tiles.
+   Discard faces keep their 3:4 proportions while all regions share the height. */
+.game-shell { gap:0; --goal-height:76px; --section-gap:4px; --work-height:150px; --work-heading:32px; --work-slots-height:108px; --work-tile-height:36px; --work-tile-width:27px; --river-heading:36px; --river-height:219px; --river-tile-height:43px; --river-tile-width:32.25px; --tray-height:226px; --tray-heading:32px; --tray-tile-height:60px; --title-size:19px; }
+.game-shell > .workbench,.game-shell > .river-section,.game-shell > .play-zone { margin-top:var(--section-gap); }
+.game-shell > .lesson-panel { flex:0 0 var(--goal-height); }
 .game-shell .lesson { height:44px; }
 .game-shell .lesson-link { min-height:44px; }
-.game-shell .lesson-link h1 { font-size:clamp(15px,5.1cqw,19px); white-space:nowrap; }
-.game-shell .lesson-description { height:36px; margin:3px 0; font-size:14px; line-height:18px; }
-.game-shell > .workbench { flex:0 0 168px; padding:0 6px 8px; }
-.workbench > .section-heading { height:44px; min-height:44px; }
-.workbench .slots { height:114px; grid-auto-rows:54px; align-content:center; }
-.workbench .slot { height:54px; }
-.workbench .pair-slot { height:100%; }
-.game-shell > .river-section { flex:1 0 192px; min-height:192px; }
-.river-heading { height:44px; min-height:44px; }
-.river-field { min-height:148px; }
-.river-grid { grid-template-rows:repeat(4,34px); grid-auto-rows:34px; gap:4px; }
-.game-shell > .play-zone { flex:0 0 242px; padding-top:2px; }
-.play-zone .tray-heading { height:44px; min-height:44px; }
+.game-shell .lesson-link h1 { font-size:var(--title-size); white-space:nowrap; }
+.game-shell .lesson-description { height:calc(var(--goal-height) - 44px); margin:0; font-size:13px; line-height:16px; }
+.game-shell > .workbench { flex:0 0 var(--work-height); padding:0 6px 8px; }
+.workbench > .section-heading { height:var(--work-heading); min-height:0; position:relative; }
+.workbench [data-action="reassemble"] { position:absolute; right:0; top:calc((var(--work-heading) - 44px) / 2); height:44px; min-height:44px; }
+.workbench .slots { height:var(--work-slots-height); grid-template-columns:1fr 1fr; grid-template-rows:repeat(2,minmax(0,1fr)); gap:6px; }
+.workbench .slots.with-pair { grid-template-columns:1fr 1fr calc(var(--work-tile-width) * 2 + 8px); }
+.workbench .slots.small-hand { grid-template-rows:minmax(0,1fr); }
+.workbench .slot,.workbench .pair-slot { height:100%; gap:3px; }
+.workbench .mini-tile,.workbench .empty-tile { width:var(--work-tile-width); height:var(--work-tile-height); }
+.workbench .slot-label { font-size:11px; line-height:13px; }
+.game-shell > .river-section { flex:0 0 var(--river-height); min-height:0; }
+.river-heading { height:var(--river-heading); min-height:0; }
+.river-field { min-height:0; }
+.river-grid { grid-template-rows:repeat(4,var(--river-tile-height)); grid-auto-rows:var(--river-tile-height); gap:3px; }
+.river-grid .mini-tile { width:var(--river-tile-width); height:var(--river-tile-height); margin:0 auto; }
+.game-shell > .play-zone { flex:0 0 var(--tray-height); padding-top:2px; }
+.play-zone .tray-heading { height:var(--tray-heading); min-height:0; }
 .play-zone .selection-info { min-height:0; height:100%; }
 .play-zone .selection-text { font-size:12px; line-height:16px; }
-.play-zone .tile-grid { grid-template-rows:repeat(2,60px); gap:6px 4px; padding:6px 0 4px; margin:0 0 8px; }
-.play-zone .tile-button,.play-zone .tile-space,.tray-tool { height:60px; min-height:44px; max-height:none; aspect-ratio:auto; }
+.play-zone .tile-grid { grid-template-rows:repeat(2,var(--tray-tile-height)); gap:6px 4px; padding:6px 0 4px; margin:0 0 6px; }
+.play-zone .tile-button,.play-zone .tile-space,.tray-tool { height:var(--tray-tile-height); min-height:44px; max-height:none; aspect-ratio:auto; }
 .tray-tool { display:flex; flex-direction:column; justify-content:center; align-items:center; gap:5px; width:100%; border:1px solid var(--line); border-radius:7px; background:#163b33; color:var(--muted); font-size:11px; }
 .tray-tool .icon { width:18px; height:18px; }
-.play-zone > .controls { height:52px; }
-.play-zone > .controls .action { height:52px; min-height:52px; padding:8px 5px; }
-@container game (max-height:699px) {
-  .lesson-panel { flex-basis:76px!important; }
-  .lesson-panel .lesson-description { height:28px; margin:2px 0; font-size:12px; line-height:14px; }
-  .workbench { flex-basis:86px!important; }
-  .workbench > .section-heading { height:32px; min-height:32px; position:relative; }
-  .workbench [data-action="reassemble"] { position:absolute; right:0; top:-6px; height:44px; min-height:44px; }
-  .workbench .slots { height:44px; grid-template-columns:repeat(4,3fr) 2fr; grid-template-rows:44px; grid-auto-rows:44px; gap:4px; }
-  .workbench .slots.small-hand { grid-template-columns:1fr 1fr; }
-  .workbench .slots.small-hand.with-pair { grid-template-columns:1fr 1fr 50px; }
-  .workbench .slot,.workbench .slot:nth-child(3),.workbench .slot:nth-child(4),.workbench .slot.pair-slot { grid-column:auto; grid-row:1; height:44px; gap:2px; }
-  .workbench .mini-tile { width:clamp(16px,5.5cqw,20px); height:26px; }
-  .workbench .empty-tile { width:clamp(15px,5.2cqw,19px); height:24px; }
-  .workbench .slot-label { font-size:10px; line-height:12px; }
-  .river-section { flex-basis:173px!important; min-height:173px!important; }
-  .river-field { min-height:129px; }
-  .river-grid { grid-template-rows:repeat(4,30px); grid-auto-rows:30px; gap:3px; }
-  .river-grid .mini-tile { height:28px; }
-  .play-zone { flex-basis:201px!important; }
-  .play-zone .tray-heading { height:32px; min-height:32px; }
-  .play-zone .tile-grid { grid-template-rows:repeat(2,50px); gap:4px; margin-bottom:4px; }
-  .play-zone .tile-button,.play-zone .tile-space,.play-zone .tray-tool { height:50px; }
-  .play-zone > .controls,.play-zone > .controls .action { height:49px; min-height:49px; }
-}
-@container game (max-height:547px) {
-  .workbench,.river-section,.play-zone { margin-top:2px!important; }
-  .river-section { flex-basis:162px!important; min-height:162px!important; }
-  .river-field { min-height:118px; }
-  .river-grid { grid-template-rows:repeat(4,28px); grid-auto-rows:28px; gap:2px; }
-  .river-grid .mini-tile { height:26px; }
-  .play-zone { flex-basis:189px!important; }
-  .play-zone .tile-grid { grid-template-rows:repeat(2,44px); }
-  .play-zone .tile-button,.play-zone .tile-space,.play-zone .tray-tool { height:44px; }
-}
+.play-zone > .controls { height:50px; }
+.play-zone > .controls .action { height:50px; min-height:50px; padding:8px 5px; }
+.game-shell[data-compact="true"] .lesson-description { font-size:12px; line-height:13px; }
+.game-shell[data-compact="true"] .workbench .slots { grid-template-columns:repeat(4,3fr) 2fr; grid-template-rows:minmax(0,1fr); gap:4px; }
+.game-shell[data-compact="true"] .workbench .slots.small-hand { grid-template-columns:1fr 1fr; }
+.game-shell[data-compact="true"] .workbench .slots.small-hand.with-pair { grid-template-columns:1fr 1fr 50px; }
+.game-shell[data-compact="true"] .workbench .slot { grid-column:auto; grid-row:1; }
+.game-shell[data-compact="true"] .workbench .slot-label { font-size:10px; line-height:12px; }

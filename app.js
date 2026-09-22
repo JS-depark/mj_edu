@@ -42,6 +42,62 @@ let resultBonus = null;
 let introPage = 0;
 let stagesPage = 0;
 
+// Fit the board from viewport space, never from stage text or occupied slots.
+// Keep a 3:4 discard face; spare height enlarges content instead of a blank river.
+function fitGameLayout() {
+  const style = getComputedStyle(root);
+  const width = root.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const height = root.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  if (width <= 0 || height <= 0) return;
+  // Two rows need 605px including four discard rows and 50px tray tiles.
+  const compact = height < 605;
+  const rows = compact ? 1 : 2;
+  const goal = compact ? 70 : 76;
+  const gap = compact ? 3 : 4;
+  const base = goal + gap * 3 + (42 + (rows - 1) * 6) + 47 + 106;
+  const minRiver = compact ? 28 : 32;
+  const minTray = compact ? 44 : 50;
+  const idealSlot = compact ? 52 : 64;
+  const idealRiver = (width - 27) / 10 / .75;
+  const idealTray = Math.min(76, (width - 24) / 7 / .75);
+  const minimum = base + rows * 44 + 4 * minRiver + 2 * minTray;
+  const ideal = base + rows * idealSlot + 4 * idealRiver + 2 * idealTray;
+  const scale = Math.max(0, Math.min(1, (height - minimum) / (ideal - minimum)));
+  const spare = Math.max(0, height - ideal);
+  const headerSpace = Math.min(32, spare);
+  const slot = 44 + (idealSlot - 44) * scale + (spare - headerSpace) / rows;
+  const river = minRiver + (idealRiver - minRiver) * scale;
+  const tray = minTray + (idealTray - minTray) * scale;
+  const workHeading = 32 + headerSpace * 12 / 32;
+  const riverHeading = 36 + headerSpace * 8 / 32;
+  const trayHeading = 32 + headerSpace * 12 / 32;
+  const maxWorkTileWidth = compact ? ((width - 30) * 3 / 14 - 6) / 3 : (width - 46) / 8;
+  const workTile = Math.min(slot - (compact ? 18 : 24), maxWorkTileWidth / .75, 56);
+  const values = {
+    'goal-height': goal,
+    'section-gap': gap,
+    'work-heading': workHeading,
+    'work-height': workHeading + 10 + (rows - 1) * 6 + rows * slot,
+    'work-slots-height': rows * slot + (rows - 1) * 6,
+    'work-tile-height': workTile,
+    'work-tile-width': workTile * .75,
+    'river-heading': riverHeading,
+    'river-height': riverHeading + 11 + river * 4,
+    'river-tile-height': river,
+    'river-tile-width': river * .75,
+    'tray-heading': trayHeading,
+    'tray-height': 74 + trayHeading + tray * 2,
+    'tray-tile-height': tray,
+    'title-size': Math.min(19, Math.max(15, width * .054)),
+  };
+  root.dataset.compact = String(compact);
+  for (const [name, value] of Object.entries(values)) root.style.setProperty(`--${name}`, `${value.toFixed(3)}px`);
+}
+fitGameLayout();
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitGameLayout).observe(root);
+window.addEventListener('resize', fitGameLayout);
+window.visualViewport?.addEventListener('resize', fitGameLayout);
+
 function remember() { safeWrite(STORAGE, game.edit ? game.edit.snapshot : game); }
 function recordWin() {
   if (game.status !== 'won') return;
