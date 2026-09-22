@@ -37,11 +37,10 @@ let feedbackError = false;
 let activeSheet = null;
 let focusBeforeSheet = null;
 let riverPage = null;
-let riverPageSize = 10;
+const riverPageSize = 40;
 let resultBonus = null;
 let introPage = 0;
 let stagesPage = 0;
-const riverObserver = new ResizeObserver(() => renderRiverBoard());
 
 function remember() { safeWrite(STORAGE, game.edit ? game.edit.snapshot : game); }
 function recordWin() {
@@ -76,12 +75,12 @@ function slotsMarkup(editing = false) {
   return `<div class="slots${stage.pair ? ' with-pair' : ''}${stage.bodies === 2 ? ' small-hand' : ''}">${game.groups.map((group, index) => slot(group, index, `몸통 ${index + 1}`)).join('')}${stage.pair ? slot(game.pair, 'pair', '머리', true) : ''}</div>`;
 }
 
-function selectionMarkup() {
+function selectionMarkup(inTray = false) {
   const match = selected.length ? registration(game, selected) : null;
   let text = feedback || (selected.length ? match.message : '패를 골라 묶어 보세요. 다시 누르면 선택 취소.');
   if (!feedback && !selected.length && game.edit) text = '묶음을 풀고, 아래에서 패를 골라 다시 등록해요.';
   const valid = selected.length && match?.ok && !feedback;
-  return `<div class="selection-info${valid ? ' valid' : ''}${feedbackError ? ' error' : ''}"><span class="selection-dot">${selected.length || (feedback ? '✓' : 'i')}</span><p class="selection-text">${text}</p>${selected.length ? `<button class="clear-selection" data-action="clear" aria-label="선택 취소">${icon('close')}</button>` : ''}</div>`;
+  return `<div class="selection-info${valid ? ' valid' : ''}${feedbackError ? ' error' : ''}"><span class="selection-dot">${selected.length || (feedback ? '✓' : 'i')}</span><p class="selection-text">${text}</p>${selected.length && !inTray ? `<button class="clear-selection" data-action="clear" aria-label="선택 취소">${icon('close')}</button>` : ''}</div>`;
 }
 
 function render() {
@@ -96,21 +95,18 @@ function render() {
     <section class="lesson-panel" aria-label="이번 단계의 목표"><div class="lesson"><button class="lesson-link" data-action="stages" aria-label="단계 선택, 현재 ${stage.title}"><span class="eyebrow">${stage.number} · ${stage.tag}</span><h1>${stage.title}${icon('down')}</h1></button><div class="wall${game.wall.length <= 6 ? ' low' : ''}" aria-label="남은 패 ${game.wall.length}장"><strong>${game.wall.length}</strong><span>남은 패</span></div><button class="icon-button menu-button" data-action="settings" aria-label="게임 메뉴">${icon('settings')}</button></div><p class="lesson-description${pending ? ' goal-warning' : ''}">${pending ? goal.message : stage.description}</p></section>
     <section class="workbench${pending ? ' goal-pending' : ''}" aria-label="등록한 묶음"><div class="section-heading"><h2>작업대<span class="count">${occupied(game)} / ${stage.bodies + Number(stage.pair)}</span>${pending ? '<span class="goal-label">역 미완성</span>' : ''}</h2><button class="text-button" data-action="reassemble" ${!occupied(game) || game.status !== 'playing' ? 'disabled' : ''}>${icon('rebuild')}재조립</button></div>${slotsMarkup()}</section>
     <section class="river-section" aria-label="버림패"><div class="river-heading"><h2>버림패<span class="count">${game.discards.length}장</span></h2><div class="river-pagination"></div></div><div class="river-field"></div></section>
-    <section class="play-zone" aria-label="패 고르기"><div class="section-heading tray-heading">${selected.length || feedback ? selectionMarkup() : `<h2>공급대<span class="count">${game.tray.filter(Boolean).length} / 13</span></h2><span class="tray-prompt">${last ? '마지막 조합을 확인해요' : '패를 골라 주세요'}</span>`}${!selected.length ? `<button class="text-button sort-button" data-action="sort" aria-label="무늬와 숫자순으로 정렬">${icon('sort')}정렬</button>` : ''}</div>
-    <div class="tile-grid" aria-label="공급대의 패, ${game.tray.filter(Boolean).length}장">${game.tray.map(tile => tile ? tileButton(tile) : '<div class="tile-space" aria-label="공급할 빈자리"><span>＋</span></div>').join('')}</div>
+    <section class="play-zone" aria-label="패 고르기"><div class="section-heading tray-heading">${selected.length || feedback ? selectionMarkup(true) : `<h2>공급대<span class="count">${game.tray.filter(Boolean).length} / 13</span></h2><span class="tray-prompt">${last ? '마지막 조합을 확인해요' : '패를 골라 주세요'}</span>`}</div>
+    <div class="tile-grid" aria-label="공급대의 패, ${game.tray.filter(Boolean).length}장">${game.tray.map(tile => tile ? tileButton(tile) : '<div class="tile-space" aria-label="공급할 빈자리"><span>＋</span></div>').join('')}<button class="tray-tool" data-action="${selected.length ? 'clear' : 'sort'}" aria-label="${selected.length ? '선택 취소' : '무늬와 숫자순으로 정렬'}">${icon(selected.length ? 'close' : 'sort')}<span>${selected.length ? '취소' : '정렬'}</span></button></div>
     ${game.status === 'playing' ? `<div class="controls gameplay-controls"><button class="action primary register" data-action="register" aria-label="${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록하기` : '묶음 등록하기'}" ${!match.ok ? 'disabled' : ''}>${icon('check')}${match.ok ? `${match.kind === 'pair' ? '머리' : '몸통'} 등록` : '묶음 등록'}</button><button class="action secondary" data-action="exchange" aria-label="한 장 버림·쯔모" ${selected.length !== 1 || !game.wall.length ? 'disabled' : ''}>버림·쯔모</button>${last ? '<button class="action secondary" data-action="end" aria-label="이번 판 마치기">판 마치기</button>' : `<button class="action secondary" data-action="supply" aria-label="${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급받기` : '공급받기'}" ${!vacancies ? 'disabled' : ''}>${vacancies ? `${Math.min(vacancies, game.wall.length)}장 공급` : '공급받기'}</button>`}</div>` : `<div class="controls"><button class="action primary" data-action="result">결과 보기 ${icon('chevron')}</button><button class="action secondary" data-action="restart">새 패로 다시 하기</button></div>`}
     </section>`;
-  riverObserver.disconnect();
-  riverObserver.observe(root.querySelector('.river-field'));
   renderRiverBoard();
 }
 
 function renderRiverBoard() {
   const field = root.querySelector('.river-field');
   if (!field) return;
-  // Tiles keep a readable size; surplus history uses pages, never a scroll strip.
-  const capacity = Math.max(1, Math.min(4, Math.floor((field.clientHeight + 4) / 38))) * 10;
-  if (capacity !== riverPageSize) { riverPageSize = capacity; riverPage = null; }
+  // A page is always four rows of ten; resizing never hides a row or changes pages.
+  const capacity = riverPageSize;
   const pages = Math.max(1, Math.ceil(game.discards.length / capacity));
   const page = riverPage === null ? pages - 1 : Math.min(riverPage, pages - 1);
   const start = page * capacity;
