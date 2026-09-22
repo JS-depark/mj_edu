@@ -5,15 +5,26 @@ export const STAGES = [
   { id: 'pairs', number: '04', title: '머리 하나 더하기', tag: '기초 · 같은 패 두 장', description: '몸통 2개와 같은 패 2장인 머리 1개를 만들어요.', bodies: 2, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 몸통 2개 + 머리' },
   { id: 'mixed', number: '05', title: '세 무늬 구분하기', tag: '기초 · 만수·삭수·통수', description: '한 묶음은 같은 무늬로! 몸통 2개와 머리를 만들어요.', bodies: 2, pair: true, suits: ['m', 'p', 's'], scored: false, note: '수패 108장 · 무늬를 섞지 않아요' },
   { id: 'hand', number: '06', title: '한 손 완성하기', tag: '기초 · 네 몸통과 머리', description: '몸통 4개와 머리 1개, 총 14장을 완성해요.', bodies: 4, pair: true, suits: ['m'], scored: false, note: '만수 36장 · 한 손의 구조' },
-  { id: 'tanyao', number: '07', title: '첫 번째 역, 탕야오', tag: '역 만들기', target: 'tanyao', description: '2~8만 사용해 몸통 4개와 머리를 만들어요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 2~8만 사용' },
-  { id: 'iipeikou', number: '08', title: '같은 슌쯔, 이페코', tag: '역 만들기', target: 'iipeikou', description: '똑같은 슌쯔 한 쌍을 포함해 한 손을 완성해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 같은 슌쯔 한 쌍' },
-  { id: 'toitoi', number: '09', title: '커쯔로 또이또이', tag: '역 만들기', target: 'toitoi', description: '몸통 4개를 모두 커쯔로 만들고 머리를 더해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 커쯔 네 개' },
-  { id: 'chinitsu', number: '10', title: '한 무늬로 청일색', tag: '역 만들기', target: 'chinitsu', description: '만·삭·통 중 한 무늬로 몸통과 머리를 완성해요.', bodies: 4, pair: true, suits: ['m', 'p', 's'], scored: true, note: '수패 108장 · 한 무늬로 통일' },
+  ...[
+    ['tanyao', '첫 번째 역, 탕야오', '2~8만 사용해 몸통 4개와 머리를 만들어요.', '2~8만 사용'],
+    ['iipeikou', '같은 슌쯔, 이페코', '똑같은 슌쯔 한 쌍을 포함해 한 손을 완성해요.', '같은 슌쯔 한 쌍'],
+    ['toitoi', '커쯔로 또이또이', '몸통 4개를 모두 커쯔로 만들고 머리를 더해요.', '커쯔 네 개'],
+    ['chinitsu', '한 무늬로 청일색', '만·삭·통 중 한 무늬로 몸통과 머리를 완성해요.', '한 무늬로 통일'],
+    ['honitsu', '자패와 혼일색', '한 가지 수패 무늬와 자패를 함께 써서 완성해요.', '한 무늬 + 자패'],
+    ['ittsu', '1부터 9, 일기통관', '한 무늬의 123·456·789 슌쯔를 포함해 완성해요.', '한 무늬의 123·456·789'],
+    ['sanshokuDoujun', '세 무늬, 삼색동순', '같은 숫자의 슌쯔를 만·삭·통으로 하나씩 만들어요.', '세 무늬로 같은 슌쯔'],
+    ['chanta', '끝수와 자패, 찬타', '모든 묶음에 1·9나 자패를 넣어요. 슌쯔와 자패도 필요해요.', '1·9·자패를 모든 묶음에'],
+    ['junchan', '끝수를 담은 준찬타', '모든 묶음에 1이나 9를 넣어요. 슌쯔도 하나 이상 필요해요.', '자패 없이 1·9를 모든 묶음에'],
+    ['honroutou', '끝수와 자패만, 혼노두', '1·9와 자패만으로 완성해요. 수패와 자패를 모두 써요.', '1·9·자패만 사용'],
+    ['sanshokuDoukou', '같은 커쯔, 삼색동각', '같은 숫자의 커쯔를 만·삭·통으로 하나씩 만들어요.', '세 무늬로 같은 커쯔'],
+    ['ryanpeikou', '슌쯔 두 쌍, 량페코', '똑같은 슌쯔 두 묶음을 두 쌍 만들고 머리를 더해요.', '같은 슌쯔 두 쌍'],
+  ].map(([id, title, description, note], index) => ({ id, number: String(index + 7).padStart(2, '0'), title, description, tag: '역 만들기', target: id, bodies: 4, pair: true, suits: ['m', 'p', 's', 'z'], scored: true, note: `전체 136장 · ${note}` })),
 ];
 
 // Old mixed-body lessons can still be resumed without redefining their rules.
 const LEGACY_STAGES = [{ id: 'shapes', number: '01', title: '몸통 만들기', tag: '이전 모양 연습', description: '슌쯔 또는 커쯔로 몸통 2개를 만들어요.', bodies: 2, pair: false, suits: ['m'], scored: false, note: '만수 36장 · 점수 없는 연습' }];
-export const SCORE_VERSION = 3;
+export const RULES_VERSION = 2;
+export const SCORE_VERSION = 4;
 export const BONUS_PER_HAN = 100;
 // Closed-hand values are the learning reference; null means closed-only.
 export const YAKU_VALUES = {
@@ -42,7 +53,12 @@ export const tileAsset = tile => tile.suit === 'z' ? HONORS[tile.rank - 1]?.asse
 export const tileOrder = (a, b) => 'mpsz'.indexOf(a.suit) - 'mpsz'.indexOf(b.suit) || a.rank - b.rank || a.id.localeCompare(b.id);
 export const isSimple = tile => tile.suit !== 'z' && tile.rank >= 2 && tile.rank <= 8;
 export const makeTiles = suits => suits.flatMap(suit => Array.from({ length: suit === 'z' ? 7 : 9 }, (_, rank) => Array.from({ length: 4 }, (_, copy) => ({ id: `${suit}${rank + 1}-${copy}`, suit, rank: rank + 1 }))).flat());
-export const stageOf = state => [...STAGES, ...LEGACY_STAGES].find(stage => stage.id === state?.stageId);
+const OLD_YAKU = ['tanyao', 'iipeikou', 'toitoi', 'chinitsu'];
+const isLegacyRound = state => state?.version === 1 && state.rulesVersion === undefined && OLD_YAKU.includes(state.stageId);
+export const stageOf = state => {
+  const stage = [...STAGES, ...LEGACY_STAGES].find(stage => stage.id === state?.stageId);
+  return isLegacyRound(state) ? { ...stage, suits: ['m', 'p', 's'], note: '이전 규칙 · 수패 108장' } : stage;
+};
 export const occupied = state => state.groups.filter(Boolean).length + Number(Boolean(state.pair));
 
 export function seededRandom(seed) {
@@ -59,7 +75,7 @@ export function createGame(stageId = 'sequences', seed = Date.now()) {
     [wall[index], wall[swap]] = [wall[swap], wall[index]];
   }
   const tray = wall.splice(-13).sort(tileOrder);
-  return { version: 1, stageId: stage.id, seed: seed >>> 0, wall, tray, groups: Array(stage.bodies).fill(null), pair: null, discards: [], supplies: 0, exchanges: 0, exchangeStreak: 0, longestExchangeStreak: 0, status: 'playing', edit: null };
+  return { version: 1, rulesVersion: RULES_VERSION, stageId: stage.id, seed: seed >>> 0, wall, tray, groups: Array(stage.bodies).fill(null), pair: null, discards: [], supplies: 0, exchanges: 0, exchangeStreak: 0, longestExchangeStreak: 0, status: 'playing', edit: null };
 }
 
 export function classify(tiles) {
@@ -204,12 +220,26 @@ export function detectYaku(state) {
   const found = [];
   const add = (id, description) => found.push({ id, ...YAKU_VALUES[id], description });
   const all = [...groups.flat(), ...state.pair];
+  const hasHonors = all.some(tile => tile.suit === 'z');
+  const suited = all.filter(tile => tile.suit !== 'z');
+  const oneSuit = new Set(suited.map(tile => tile.suit)).size === 1;
+  const terminal = tile => tile.suit !== 'z' && [1, 9].includes(tile.rank);
+  const outer = tile => tile.suit === 'z' || terminal(tile);
   if (all.every(isSimple)) add('tanyao', '몸통과 머리를 모두 2~8 숫자패로 만들었어요.');
   if (identicalPairs >= 2) add('ryanpeikou', '같은 슌쯔 두 묶음이 두 쌍 있어요. 이페코와 중복해서 세지 않아요.');
   else if (identicalPairs === 1) add('iipeikou', '같은 무늬, 같은 숫자의 슌쯔가 두 묶음이에요.');
   if (groups.every(group => classify(group) === 'triplet')) add('toitoi', '네 몸통을 모두 같은 패 세 장인 커쯔로 만들었어요.');
-  if (all.every(tile => tile.suit !== 'z') && new Set(all.map(tile => tile.suit)).size === 1) add('chinitsu', '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.');
+  if (oneSuit && hasHonors) add('honitsu', '한 가지 수패 무늬와 자패를 함께 사용했어요.');
+  if (oneSuit && !hasHonors) add('chinitsu', '몸통과 머리를 모두 한 가지 수패 무늬로 만들었어요.');
+  if (['m', 'p', 's'].some(suit => [1, 4, 7].every(rank => sequences.some(group => group[0].suit === suit && group[0].rank === rank)))) add('ittsu', '한 가지 무늬로 123·456·789 슌쯔를 모두 만들었어요.');
   if (sequences.some(group => ['m', 'p', 's'].every(suit => sequences.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) add('sanshokuDoujun', '만·통·삭으로 같은 숫자의 슌쯔를 만들었어요.');
+  if (sequences.length && [...groups, state.pair].every(group => group.some(outer))) {
+    if (hasHonors) add('chanta', '모든 묶음에 1·9나 자패가 있고, 슌쯔와 자패도 포함했어요.');
+    else add('junchan', '자패 없이 모든 묶음에 1이나 9가 있고, 슌쯔도 포함했어요.');
+  }
+  if (hasHonors && suited.length && all.every(outer)) add('honroutou', '1·9와 자패만 사용했어요. 네 몸통은 모두 커쯔예요.');
+  const triplets = groups.filter(group => classify(group) === 'triplet');
+  if (triplets.some(group => ['m', 'p', 's'].every(suit => triplets.some(other => other[0].suit === suit && other[0].rank === group[0].rank)))) add('sanshokuDoukou', '만·통·삭으로 같은 숫자의 커쯔를 만들었어요.');
   return found;
 }
 
@@ -225,6 +255,14 @@ export function goalStatus(state) {
     iipeikou: '재조립으로 같은 무늬·숫자의 슌쯔 한 쌍을 만들어요.',
     toitoi: '재조립으로 슌쯔를 바꿔 네 몸통 모두 커쯔로 만들어요.',
     chinitsu: '재조립으로 머리까지 한 가지 무늬로 맞춰요.',
+    honitsu: '한 가지 수패 무늬와 자패를 모두 포함해요.',
+    ittsu: '한 무늬의 123·456·789 슌쯔를 모두 넣어요.',
+    sanshokuDoujun: '같은 숫자의 슌쯔를 만·삭·통으로 맞춰요.',
+    chanta: '모든 묶음에 1·9나 자패를 넣고, 슌쯔와 자패를 포함해요.',
+    junchan: '자패 없이 모든 묶음에 1·9를 넣고 슌쯔를 포함해요.',
+    honroutou: '1·9와 자패만 남기고, 수패와 자패를 모두 포함해요.',
+    sanshokuDoukou: '같은 숫자의 커쯔를 만·삭·통으로 맞춰요.',
+    ryanpeikou: '똑같은 슌쯔 두 묶음을 두 쌍 만들어요.',
   };
   return { full, complete, target, found, message: full && !complete ? missing[stage.target] : stage.description };
 }
@@ -233,19 +271,22 @@ export function scoreGame(state) {
   if (!stageOf(state)?.scored || state.status !== 'won' || state.edit) return null;
   const goal = goalStatus(state);
   if (!goal.complete) return null;
-  // The shape satisfying the goal is covered by the fixed completion award.
-  // An upgraded goal shape also occupies that role, never two yaku awards.
-  const bonuses = goal.found.filter(yaku => yaku.id !== goal.target.id).map(yaku => ({ ...yaku, points: yaku.han * BONUS_PER_HAN }));
-  const base = 1000;
+  // Keep in-progress 108-tile saves on their original score rules.
+  const legacy = isLegacyRound(state);
+  const found = legacy ? goal.found.filter(yaku => [...OLD_YAKU, 'ryanpeikou', 'sanshokuDoujun'].includes(yaku.id)) : goal.found;
+  const bonuses = found.filter(yaku => yaku.id !== goal.target.id).map(yaku => ({ ...yaku, points: yaku.han * BONUS_PER_HAN }));
+  const base = legacy ? 1000 : goal.target.han * BONUS_PER_HAN;
   const remaining = state.wall.length * 10;
   const bonusHan = bonuses.reduce((sum, bonus) => sum + bonus.han, 0);
   const bonusPoints = bonusHan * BONUS_PER_HAN;
-  return { version: SCORE_VERSION, base, remaining, target: goal.target, bonuses, bonusHan, bonusPoints, bonusPerHan: BONUS_PER_HAN, total: base + remaining + bonusPoints };
+  return { version: legacy ? 3 : SCORE_VERSION, base, remaining, target: goal.target, bonuses, bonusHan, bonusPoints, bonusPerHan: BONUS_PER_HAN, total: base + remaining + bonusPoints };
 }
 
 export function validSavedGame(state) {
   try {
     const stage = stageOf(state);
+    if (state.rulesVersion !== undefined && state.rulesVersion !== RULES_VERSION) return false;
+    if (stage?.scored && !isLegacyRound(state) && state.rulesVersion !== RULES_VERSION) return false;
     if (!stage || state.version !== 1 || !['playing', 'won', 'lost'].includes(state.status) || state.edit || state.tray.length !== 13 || state.groups.length !== stage.bodies) return false;
     if (!Array.isArray(state.wall) || !Array.isArray(state.discards)) return false;
     if (state.groups.some(group => group && !['sequence', 'triplet'].includes(classify(group)))) return false;
@@ -253,7 +294,7 @@ export function validSavedGame(state) {
     if (state.pair && (!stage.pair || classify(state.pair) !== 'pair')) return false;
     if (stage.id === 'tanyao' && [...state.groups.filter(Boolean).flat(), ...(state.pair || [])].some(tile => !isSimple(tile))) return false;
     const all = [...state.wall, ...state.tray.filter(Boolean), ...state.groups.filter(Boolean).flat(), ...(state.pair || []), ...state.discards];
-    const expected = new Set(createGame(stage.id, 1).wall.concat(createGame(stage.id, 1).tray).map(tile => tile.id));
+    const expected = new Set(makeTiles(stage.suits).map(tile => tile.id));
     if (all.length !== expected.size || new Set(all.map(tile => tile.id)).size !== expected.size) return false;
     if (!all.every(tile => expected.has(tile.id) && tile.id.startsWith(`${tile.suit}${tile.rank}-`))) return false;
     if (!['supplies', 'exchanges', 'exchangeStreak', 'longestExchangeStreak'].every(key => Number.isInteger(state[key]) && state[key] >= 0)) return false;

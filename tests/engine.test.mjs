@@ -166,7 +166,7 @@ test('structural bonuses combine only compatible registered shapes', () => {
   const double = fixture('tanyao', { groups: [['m2', 'm3', 'm4'], ['m2', 'm3', 'm4'], ['m5', 'm6', 'm7'], ['m5', 'm6', 'm7']], pair: ['m8', 'm8'], status: 'won' });
   const score = scoreGame(double);
   assert.deepEqual(score.bonuses.map(bonus => bonus.name), ['량페코', '청일색']);
-  assert.equal(score.total, 1000 + double.wall.length * 10 + 900);
+  assert.equal(score.total, 100 + double.wall.length * 10 + 900);
   assert.equal(score.version, SCORE_VERSION);
   assert.equal(score.bonusHan, 9);
   assert.deepEqual(score.bonuses.map(bonus => [bonus.han, bonus.openHan, bonus.points]), [[3, null, 300], [6, 5, 600]]);
@@ -296,8 +296,8 @@ test('each new yaku goal clears only when its condition and all five slots are c
     const score = scoreGame(won);
     assert.equal(score.target.id, id);
     assert.equal(score.bonuses.length, 0);
-    assert.equal(score.total, 1000 + won.wall.length * 10);
-    assert.equal(score.version, 3);
+    assert.equal(score.total, YAKU_VALUES[id].han * 100 + won.wall.length * 10);
+    assert.equal(score.version, SCORE_VERSION);
     inventory(won);
   }
 });
@@ -339,7 +339,7 @@ test('reassembly commits a goal win without refilling, even after the last wall 
   assert.equal(won.wall.length, 0);
   assert.equal(won.tray.filter(Boolean).length, game.tray.filter(Boolean).length);
   assert.equal(won.supplies, game.supplies);
-  assert.equal(scoreGame(won).total, 1000);
+  assert.equal(scoreGame(won).total, 600);
   assert.equal(endRound(won).status, 'won');
   assert.ok(validSavedGame(won));
   inventory(won);
@@ -369,7 +369,7 @@ test('shared detection excludes the target from bonuses and counts compatible di
   assert.deepEqual(score.bonuses.map(yaku => yaku.id), ['tanyao','sanshokuDoujun']);
   assert.equal(score.bonusPoints, 300);
   assert.equal(score.bonusHan, 3);
-  assert.equal(score.total, 1000 + game.wall.length * 10 + 300);
+  assert.equal(score.total, 100 + game.wall.length * 10 + 300);
   assert.deepEqual(detectYaku({ ...game, pair: null }), []);
 });
 

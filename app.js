@@ -1,4 +1,5 @@
 import { STAGES, HONORS, SCORE_VERSION, BONUS_PER_HAN, YAKU_VALUES, goalStatus, tileName, tileAsset, stageOf, occupied, createGame, registration, register, supply, exchange, sortTray, beginReassembly, releaseGroup, canFinishReassembly, finishReassembly, cancelReassembly, endRound, findGroup, scoreGame, validSavedGame } from './engine.js';
+import { rankScore, rankLabel, starThreshold } from './benchmark.js';
 
 const root = document.querySelector('#app');
 const sheet = document.querySelector('#sheet');
@@ -39,8 +40,15 @@ let focusBeforeSheet = null;
 let riverPage = null;
 const riverPageSize = 40;
 let resultBonus = null;
+let resultRanking = false;
 let introPage = 0;
 let stagesPage = 0;
+const stagePages = [
+  { name: '기초 1–3', stages: STAGES.slice(0, 3) },
+  { name: '기초 4–6', stages: STAGES.slice(3, 6) },
+  ...[0, 1, 2].map(index => ({ name: `역 ${index * 4 + 1}–${index * 4 + 4}`, stages: STAGES.filter(stage => stage.scored).slice(index * 4, index * 4 + 4) })),
+];
+const starsMarkup = count => `<span class="stars" role="img" aria-label="별 ${count}개 / 3개">${[1, 2, 3].map(n => `<span class="${n <= count ? 'earned' : ''}" aria-hidden="true">${n <= count ? '★' : '☆'}</span>`).join('')}</span>`;
 
 // Fit the board from viewport space, never from stage text or occupied slots.
 // Keep a 3:4 discard face; spare height enlarges content instead of a blank river.
@@ -105,7 +113,8 @@ function recordWin() {
   const records = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
   const score = scoreGame(game);
   const previous = records[game.stageId] || {};
-  records[game.stageId] = { ...previous, completed: true, ...(score ? { bestByScoreVersion: { ...previous.bestByScoreVersion, [SCORE_VERSION]: Math.max(Number(previous.bestByScoreVersion?.[SCORE_VERSION]) || 0, score.total) } } : {}) };
+  const ranking = score && rankScore(game.stageId, score.total, score.version);
+  records[game.stageId] = { ...previous, completed: true, ...(score ? { bestByScoreVersion: { ...previous.bestByScoreVersion, [score.version]: Math.max(Number(previous.bestByScoreVersion?.[score.version]) || 0, score.total) } } : {}), ...(ranking ? { starsByBenchmark: { ...previous.starsByBenchmark, [ranking.benchmarkId]: Math.max(Number(previous.starsByBenchmark?.[ranking.benchmarkId]) || 0, ranking.stars) } } : {}) };
   safeWrite(RECORDS, records);
 }
 
@@ -205,9 +214,9 @@ function sheetFrame(title, content, closeAction = 'close', footer = '') {
 function openSheet(kind) {
   if (!sheet.open) focusBeforeSheet = document.activeElement?.dataset?.action;
   activeSheet = kind;
-  if (kind === 'result') resultBonus = null;
+  if (kind === 'result') { resultBonus = null; resultRanking = false; }
   if (kind === 'intro') introPage = 0;
-  if (kind === 'stages') stagesPage = Math.min(2, Math.floor(Math.max(0, STAGES.findIndex(stage => stage.id === game.stageId)) / 3));
+  if (kind === 'stages') stagesPage = Math.max(0, stagePages.findIndex(page => page.stages.some(stage => stage.id === game.stageId)));
   sheet.dataset.view = kind;
   sheet.classList.toggle('expanded', ['edit', 'help', 'result', 'settings', 'stages', 'intro', 'lesson'].includes(kind));
   if (kind === 'edit') renderEdit();
@@ -258,14 +267,22 @@ function renderLesson() {
     pairs: { title: '두 장짜리 짝은 머리', tiles: ['m7','m7'], rule: '같은 패 두 장은 머리 자리에 등록해요.', caution: '슌쯔·커쯔는 몸통, 두 장짜리는 머리예요. 몸통 2개와 머리 1개를 채워요.', tip: '머리를 먼저 만들어도 괜찮아요. 한 장만 따로 등록할 수는 없어요.' },
     mixed: { title: '한 묶음 안에서는 같은 무늬', tiles: ['s2','s3','s4'], rule: '만수·삭수·통수를 함께 보며 골라요.', caution: '2만·3삭·4통은 슌쯔가 아니에요. 숫자가 같아도 무늬가 다르면 커쯔가 아니에요.', tip: '서로 다른 몸통은 무늬가 달라도 돼요. 몸통 2개와 머리 1개를 만들어요.' },
     hand: { title: '네 몸통과 머리 하나', tiles: ['m2','m3','m4'], rule: '3장 × 몸통 4개 + 2장 × 머리 1개 = 14장', caution: '이번에는 만수만 보며 다섯 자리를 완성해요. 머리를 만들 패도 남겨 보세요.', tip: '이미 등록한 조합을 바꾸고 싶다면 ‘재조립’을 써요. 원래 차 있던 자리를 모두 다시 채워야 끝나요.' },
-    tanyao: { title: '첫 번째 역, 탕야오 · 1판', tiles: ['p3','p4','p5'], rule: '역은 완성한 손이 갖춰야 할 조건이에요. 탕야오는 2~8 숫자패만 써요.', caution: '1·9와 자패는 사용할 수 없어요. 슌쯔도 커쯔도 괜찮아요.', tip: `남은 패는 한 장당 10점, 추가로 발견한 역은 판수 × ${BONUS_PER_HAN}점이에요.` },
+    tanyao: { title: '첫 번째 역, 탕야오 · 1판', tiles: ['p3','p4','p5'], rule: '역은 완성한 손이 갖춰야 할 조건이에요. 탕야오는 2~8 숫자패만 써요.', caution: '1·9와 자패는 사용할 수 없어요. 슌쯔도 커쯔도 괜찮아요.', tip: `목표와 추가 역은 각각 판수 × ${BONUS_PER_HAN}점, 남은 패는 한 장당 10점이에요.` },
     iipeikou: { title: '같은 슌쯔 한 쌍, 이페코 · 1판', examples: [['m2','m3','m4'], ['m2','m3','m4']], rule: '무늬도 숫자도 똑같은 슌쯔 두 묶음이에요.', caution: '같은 슌쯔 한 쌍을 포함해 몸통 4개와 머리 1개를 만들어요. 나머지 몸통은 자유예요.', tip: '1·9도 쓸 수 있어요. 자리를 다 채워도 목표가 없다면 재조립으로 바꿔 보세요.' },
-    toitoi: { title: '커쯔 네 개, 또이또이 · 2판', tiles: ['s6','s6','s6'], rule: '네 몸통이 모두 같은 패 세 장인 커쯔예요.', caution: '커쯔 4개와 머리 1개를 만들어요. 무늬는 서로 달라도 괜찮아요.', tip: '이번에는 숫자패로 연습해요. 같은 패 두 장을 남겨 두고 세 번째 패를 기다려 보세요.' },
+    toitoi: { title: '커쯔 네 개, 또이또이 · 2판', tiles: ['s6','s6','s6'], rule: '네 몸통이 모두 같은 패 세 장인 커쯔예요.', caution: '커쯔 4개와 머리 1개를 만들어요. 무늬는 서로 달라도 괜찮아요.', tip: '숫자패와 자패를 모두 쓸 수 있어요. 같은 패 두 장을 남겨 두고 세 번째 패를 기다려 보세요.' },
     chinitsu: { title: '한 무늬로 통일, 청일색 · 6판', tiles: ['p2','p3','p4'], rule: '몸통도 머리도 모두 같은 수패 무늬로 만들어요.', caution: '만수·삭수·통수 중 하나를 골라요. 숫자는 1~9 모두 사용할 수 있어요.', tip: '모으던 무늬를 바꿔도 괜찮아요. 이미 등록한 묶음은 재조립으로 함께 바꿀 수 있어요.' },
+    honitsu: { title: '한 무늬와 자패, 혼일색 · 3판', examples: [['m2','m3','m4'], ['z7','z7','z7']], rule: '수패는 한 무늬로 모으고, 자패를 함께 사용해요.', caution: '몸통 4개와 머리를 완성해요. 수패와 자패가 모두 있어야 해요.', tip: '자패를 머리로 써도 괜찮아요.' },
+    ittsu: { title: '1부터 9까지, 일기통관 · 2판', examples: [['m1','m2','m3'], ['m4','m5','m6'], ['m7','m8','m9']], rule: '한 무늬의 123·456·789, 세 슌쯔를 모아요.', caution: '나머지 몸통 하나와 머리는 자유롭게 만들어요.', tip: '1부터 9가 흩어져 있기만 해서는 안 돼요. 세 슌쯔로 등록해요.' },
+    sanshokuDoujun: { title: '세 무늬로, 삼색동순 · 2판', examples: [['m2','m3','m4'], ['s2','s3','s4'], ['p2','p3','p4']], rule: '같은 숫자의 슌쯔를 만수·삭수·통수로 하나씩 모아요.', caution: '나머지 몸통 하나와 머리는 자유롭게 만들어요.', tip: '123부터 789까지, 어떤 연속 숫자로 만들어도 괜찮아요.' },
+    chanta: { title: '끝수와 자패, 찬타 · 2판', examples: [['m1','m2','m3'], ['z1','z1','z1']], rule: '모든 몸통과 머리에 1·9 또는 자패가 들어가요.', caution: '슌쯔가 하나 이상, 자패도 하나 이상 있어야 해요.', tip: '슌쯔는 123이나 789예요. 머리도 1·9 또는 자패로 만들어요.' },
+    junchan: { title: '끝수를 담아, 준찬타 · 3판', examples: [['s1','s2','s3'], ['p7','p8','p9']], rule: '자패 없이 모든 몸통과 머리에 1이나 9를 넣어요.', caution: '슌쯔가 하나 이상 있어야 해요. 머리는 1 또는 9예요.', tip: '123·789 슌쯔와 1·9 커쯔를 조합해 보세요.' },
+    honroutou: { title: '끝수와 자패만, 혼노두 · 2판', examples: [['m1','m1','m1'], ['z5','z5','z5']], rule: '1·9와 자패만 사용하고, 수패와 자패가 모두 있어요.', caution: '네 몸통은 커쯔, 머리도 1·9 또는 자패로 만들어요.', tip: '2~8 숫자패는 사용할 수 없어요.' },
+    sanshokuDoukou: { title: '세 무늬로, 삼색동각 · 2판', examples: [['m5','m5','m5'], ['s5','s5','s5'], ['p5','p5','p5']], rule: '같은 숫자의 커쯔를 만수·삭수·통수로 하나씩 모아요.', caution: '나머지 몸통 하나와 머리는 자유롭게 만들어요.', tip: '세 커쯔의 숫자는 모두 같아야 해요.' },
+    ryanpeikou: { title: '슌쯔 두 쌍, 량페코 · 3판', examples: [['m2','m3','m4'], ['m2','m3','m4'], ['p6','p7','p8'], ['p6','p7','p8']], rule: '똑같은 슌쯔 두 묶음을 두 쌍 만들어요.', caution: '몸통 4개가 모두 슌쯔예요. 머리는 자유롭게 만들어요.', tip: '량페코를 완성하면 이페코 점수를 중복해서 더하지 않아요.' },
   };
   const lesson = lessons[stage.id] || lessons.hand;
   const examples = lesson.examples || [lesson.tiles];
-  sheet.innerHTML = sheetFrame('이번에 배울 것', `<p class="eyebrow">STEP ${stage.number} · ${stage.scored ? '역 만들기' : '점수 없는 연습'}</p><h3 class="intro-title">${lesson.title}</h3><div class="lesson-example${examples.length > 1 ? ' paired-example' : ''}">${examples.map(tiles => miniGroup(tiles.map(code => ({ suit: code[0], rank: Number(code[1]) })))).join('')}</div><p class="lesson-rule">${lesson.rule}</p><div class="intro-callout"><strong>이번 목표</strong><p>${lesson.caution}</p></div><p class="lesson-tip">${lesson.tip}</p><p class="saved-note">${stage.note} · 패 순서는 매번 달라져요.</p>`, 'close', '<button class="action primary full" data-action="close">직접 만들어 보기</button>');
+  sheet.innerHTML = sheetFrame('이번에 배울 것', `<p class="eyebrow">STEP ${stage.number} · ${stage.scored ? '역 만들기' : '점수 없는 연습'}</p><h3 class="intro-title">${lesson.title}</h3><div class="lesson-example${examples.length > 1 ? ' paired-example' : ''}${examples.length > 2 ? ' many-examples' : ''}">${examples.map(tiles => miniGroup(tiles.map(code => ({ suit: code[0], rank: Number(code[1]) })))).join('')}</div><p class="lesson-rule">${lesson.rule}</p><div class="intro-callout"><strong>이번 목표</strong><p>${lesson.caution}</p></div><p class="lesson-tip">${lesson.tip}</p><p class="saved-note">${stage.note} · 패 순서는 매번 달라져요.</p>`, 'close', '<button class="action primary full" data-action="close">직접 만들어 보기</button>');
 }
 
 function renderHelp() {
@@ -280,9 +297,17 @@ function renderHelp() {
 
 function renderStages() {
   const records = safeRead(RECORDS, {});
-  const yakuPage = stagesPage === 2;
-  const visibleStages = yakuPage ? STAGES.filter(stage => stage.scored) : STAGES.slice(stagesPage * 3, stagesPage * 3 + 3);
-  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요.<br>다른 단계로 이동하면 새 판을 시작해요.</p><div class="stage-pages" aria-label="단계 묶음">${['기초 1–3', '기초 4–6', '역 만들기'].map((name, i) => `<button data-action="stage-page" data-page="${i}" aria-pressed="${i === stagesPage}">${name}</button>`).join('')}</div><div class="${yakuPage ? 'yaku-stage-list' : 'tutorial-stage-list'}">${visibleStages.map(stage => `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span><strong>${stage.title}</strong><small>${stage.note}</small></span><span class="lesson-badge">${records?.[stage.id]?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron')}</span></button>`).join('')}</div><p class="saved-note">${yakuPage ? '각 역의 목표를 완성하고 다른 모양도 발견해 봐요.' : '기초 6단계는 점수 없이 익혀요.'}</p>`, 'close', '<button class="action secondary full" data-action="intro">처음부터 · 패 소개 보기</button>');
+  const yakuPage = stagesPage >= 2;
+  const visibleStages = stagePages[stagesPage].stages;
+  const cards = visibleStages.map(stage => {
+    const record = records?.[stage.id];
+    const best = record?.bestByScoreVersion?.[SCORE_VERSION];
+    const ranking = stage.scored && best != null ? rankScore(stage.id, best, SCORE_VERSION) : null;
+    const detail = ranking ? `최고 ${Number(best).toLocaleString()}점 · 자동 대비 ${rankLabel(ranking)}` : stage.scored ? `${YAKU_VALUES[stage.target].han}판 · 전체 136장` : stage.note;
+    const badge = stage.scored ? starsMarkup(ranking?.stars || 0) : record?.completed ? '완료 ✓' : game.stageId === stage.id ? '연습 중' : icon('chevron');
+    return `<button class="lesson-card${game.stageId === stage.id ? ' current' : ''}" data-action="stage" data-stage="${stage.id}"><span class="lesson-num">${stage.number}</span><span class="lesson-copy"><strong>${stage.title}</strong><small>${detail}</small></span><span class="lesson-badge">${badge}</span></button>`;
+  }).join('');
+  sheet.innerHTML = sheetFrame('한 단계씩 익혀요', `<p class="sheet-intro">원하는 단계부터 해볼 수 있어요.<br>다른 단계로 이동하면 새 판을 시작해요.</p><div class="stage-pages" aria-label="단계 묶음">${stagePages.map((page, i) => `<button data-action="stage-page" data-page="${i}" aria-pressed="${i === stagesPage}">${page.name}</button>`).join('')}</div><div class="${yakuPage ? 'yaku-stage-list' : 'tutorial-stage-list'}">${cards}</div><p class="saved-note">${yakuPage ? '별은 각 역의 자동 플레이 기록과 비교해요.<br>단계 번호는 실전 난이도 순서가 아니에요.' : '기초 6단계는 점수 없이 익혀요.'}</p>`, 'close', '<button class="action secondary full" data-action="intro">처음부터 · 패 소개 보기</button>');
 }
 function renderSettings() {
   sheet.innerHTML = sheetFrame('게임 메뉴', `<div class="settings-row"><span>숫자 도움 표시<small>패 왼쪽 위에 작은 숫자를 표시해요.</small></span><button class="toggle" role="switch" aria-label="숫자 도움 표시" aria-checked="${prefs.numbers}" data-action="numbers"></button></div><div class="settings-row"><span>자동정렬<small>등록·공급·교체 후 무늬와 숫자순으로 정렬해요.<br>재조립 중에는 패 위치를 유지해요.</small></span><button class="toggle" role="switch" aria-label="자동정렬" aria-checked="${prefs.autoSort}" data-action="auto-sort"></button></div><div class="sheet-actions"><button class="action secondary" data-action="intro">패 소개</button><button class="action secondary" data-action="help">${icon('help')}놀이 방법</button><button class="action secondary" data-action="stages">단계 선택</button><button class="action secondary" data-action="restart">${icon('rebuild')}새 패로 다시 시작</button></div><p class="credit">진행 상황과 설정은 이 브라우저에 저장돼요.<br>차곡 · 패 그림 <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a> · CC0</p>`, 'close', '<button class="action primary full" data-action="close">계속하기</button>');
@@ -312,6 +337,12 @@ function renderResult() {
   const won = game.status === 'won';
   const stage = stageOf(game);
   const score = scoreGame(game);
+  const ranking = score && rankScore(game.stageId, score.total, score.version);
+  if (resultRanking && ranking) {
+    const thresholds = [2, 3].map(stars => starThreshold(stage.id, stars));
+    sheet.innerHTML = sheetFrame('별과 순위의 기준', `<div class="ranking-detail">${starsMarkup(ranking.stars)}<h3>${rankLabel(ranking)}</h3><p>${YAKU_VALUES[stage.target].name} · 자동 플레이의 클리어 기록과 비교</p><div class="star-rules"><div>${starsMarkup(1)}<span>스테이지 클리어</span></div><div>${starsMarkup(2)}<span>상위 50% 이내<small>${thresholds[0].toLocaleString()}점부터</small></span></div><div>${starsMarkup(3)}<span>상위 10% 이내<small>${thresholds[1].toLocaleString()}점부터</small></span></div></div><p>136장으로 ${ranking.trials.toLocaleString()}판을 자동 플레이한 뒤,<br>클리어한 ${ranking.clears.toLocaleString()}판의 점수만 비교했어요.</p><p>같은 점수는 중간 순위로 계산해요.<br>별은 반올림 전 순위로 정하고, 최고 기록을 남겨요.</p><p class="result-note">사람들의 순위나 실전 마작의 난이도가 아니에요.<br>자동 플레이는 필요한 조합을 남기며, 재조립은 하지 않아요.</p></div>`, 'close', '<button class="action primary full" data-action="result-overview">결과로 돌아가기</button>');
+    return;
+  }
   const next = STAGES[STAGES.findIndex(item => item.id === game.stageId) + 1];
   const records = safeRead(RECORDS, {});
   const hand = `<div class="result-hand" aria-label="${won ? '완성한' : '등록한'} 묶음">${slotsMarkup()}</div>`;
@@ -324,9 +355,11 @@ function renderResult() {
   const upgraded = score && score.target.id !== stage.target;
   const successTitle = score ? `${score.target.name}${upgraded ? '로 목표 완성!' : ' 완성!'}` : stage.id === 'hand' ? '한 손이 완성됐어요!' : stage.pair ? '몸통과 머리를 구분했어요!' : stage.bodyKind === 'sequence' ? '슌쯔 두 개, 완성!' : stage.bodyKind === 'triplet' ? '커쯔 두 개, 완성!' : '몸통 두 개, 완성!';
   const successCopy = upgraded ? `${YAKU_VALUES[stage.target].name}의 조건을 포함한 모양이에요.` : score ? score.target.description : '한 묶음씩, 모양이 익숙해지고 있어요.';
-  const best = records?.[stage.id]?.bestByScoreVersion?.[SCORE_VERSION] || score?.total || 0;
-  const scoring = score ? `<div class="score-breakdown"><div><span>목표 완성</span><strong>+${score.base.toLocaleString()}</strong></div><div><span>남은 패 ${game.wall.length} × 10</span><strong>+${score.remaining}</strong></div><div><span>추가 ${score.bonusHan}판 × ${score.bonusPerHan}</span><strong>+${score.bonusPoints}</strong></div></div><div class="result-bonuses"><p>${score.bonuses.length ? '함께 만든 모양 · 눌러서 알아보기' : '다음엔 다른 역의 모양도 함께 만들어 봐요.'}</p><div>${score.bonuses.map((item, index) => `<button data-action="result-bonus" data-index="${index}"><span class="bonus-copy"><strong>${item.name}<small>${item.han}판</small></strong><span>${item.description}</span></span><span class="bonus-award">+${item.points}<small>${item.han}판 × ${score.bonusPerHan}</small></span>${icon('chevron')}</button>`).join('')}</div></div><p class="result-note">목표 모양은 완성 점수에 포함해요. 추가 모양만 보너스!</p>` : `<div class="tutorial-achievement">${icon(won ? 'check' : 'rebuild')}<p>${won ? '이번 모양을 익혔어요.<br>점수 부담 없이 다음 단계로 가볼까요?' : '버림패와 남은 조합을 돌아보고<br>새 패로 다시 연습해 보세요.'}</p></div>`;
-  sheet.innerHTML = sheetFrame(won ? '스테이지 클리어' : '이번 연습의 기록', `<div class="result-hero${won ? ' cleared' : ''}">${won ? `<span class="clear-seal">${icon('spark')} ${score ? `${score.target.name} · ${score.target.han}판` : `STEP ${stage.number} COMPLETE`}</span>` : ''}<h3>${won ? successTitle : '패산을 모두 사용했어요'}</h3><p>${won ? successCopy : `${occupied(game)}개의 묶음을 만들었어요. 다시 도전해 봐요.`}</p></div>${score ? `<div class="score-banner"><strong>${score.total.toLocaleString()}<small>점</small></strong><span>내 최고 · 현재 점수 규칙<strong>${Number(best).toLocaleString()}점</strong></span></div>` : ''}${hand}${scoring}<div class="result-meta"><span>공급 <strong>${game.supplies}회</strong></span><span>한 장 교체 <strong>${game.exchanges}회</strong></span><span>남은 패 <strong>${game.wall.length}장</strong></span></div>`, 'close', footer);
+  const best = records?.[stage.id]?.bestByScoreVersion?.[score?.version] || score?.total || 0;
+  const nextStars = ranking && ranking.stars < 3 ? starThreshold(stage.id, ranking.stars + 1) : null;
+  const rankPanel = ranking ? `<button class="result-ranking" data-action="result-ranking" aria-label="${rankLabel(ranking)}, 별 ${ranking.stars}개. 비교 기준 보기"><span>${starsMarkup(ranking.stars)}<small>${nextStars ? `다음 별까지 ${(nextStars - score.total).toLocaleString()}점` : '별 세 개를 모두 모았어요!'}</small></span><span class="rank-copy"><small>자동 플레이 대비</small><strong>${rankLabel(ranking)} ${icon('chevron')}</strong></span></button>` : score ? '<p class="result-note">이전 108장 판은 순위 비교에서 제외해요.<br>새 패로 재도전하면 136장 규칙과 별을 적용해요.</p>' : '';
+  const scoring = score ? `<div class="score-breakdown"><div><span>${score.version === SCORE_VERSION ? `목표 ${score.target.han}판 × ${score.bonusPerHan}` : '이전 목표 완성'}</span><strong>+${score.base.toLocaleString()}</strong></div><div><span>남은 패 ${game.wall.length} × 10</span><strong>+${score.remaining}</strong></div><div><span>추가 ${score.bonusHan}판 × ${score.bonusPerHan}</span><strong>+${score.bonusPoints}</strong></div></div><div class="result-bonuses"><p>${score.bonuses.length ? '함께 만든 모양 · 눌러서 알아보기' : '목표 역을 완성했어요.'}</p><div>${score.bonuses.map((item, index) => `<button data-action="result-bonus" data-index="${index}"><span class="bonus-copy"><strong>${item.name}<small>${item.han}판</small></strong><span>${item.description}</span></span><span class="bonus-award">+${item.points}<small>${item.han}판 × ${score.bonusPerHan}</small></span>${icon('chevron')}</button>`).join('')}</div></div><p class="result-note">목표와 추가 역은 한 번씩만 점수에 포함해요.</p>` : `<div class="tutorial-achievement">${icon(won ? 'check' : 'rebuild')}<p>${won ? '이번 모양을 익혔어요.<br>점수 부담 없이 다음 단계로 가볼까요?' : '버림패와 남은 조합을 돌아보고<br>새 패로 다시 연습해 보세요.'}</p></div>`;
+  sheet.innerHTML = sheetFrame(won ? '스테이지 클리어' : '이번 연습의 기록', `<div class="result-hero${won ? ' cleared' : ''}">${won ? `<span class="clear-seal">${icon('spark')} ${score ? `${score.target.name} · ${score.target.han}판` : `STEP ${stage.number} COMPLETE`}</span>` : ''}<h3>${won ? successTitle : '패산을 모두 사용했어요'}</h3><p>${won ? successCopy : `${occupied(game)}개의 묶음을 만들었어요. 다시 도전해 봐요.`}</p></div>${score ? `<div class="score-banner"><strong>${score.total.toLocaleString()}<small>점</small></strong><span>내 최고${score.version === SCORE_VERSION ? '' : ' · 이전 규칙'}<strong>${Number(best).toLocaleString()}점</strong></span></div>` : ''}${rankPanel}${hand}${scoring}<div class="result-meta"><span>공급 <strong>${game.supplies}회</strong></span><span>한 장 교체 <strong>${game.exchanges}회</strong></span><span>남은 패 <strong>${game.wall.length}장</strong></span></div>`, 'close', footer);
 }
 function handleClick(event) {
   const button = event.target.closest('[data-action]');
@@ -357,8 +390,9 @@ function handleClick(event) {
     riverPage = Math.max(0, Math.min(lastPage, current + (action === 'river-next' ? 1 : -1)));
     renderRiverBoard();
     root.querySelector(`[data-action="${action}"]:not(:disabled)`)?.focus({ preventScroll: true });
-  } else if (action === 'result-bonus' || action === 'result-overview') {
+  } else if (action === 'result-bonus' || action === 'result-overview' || action === 'result-ranking') {
     resultBonus = action === 'result-bonus' ? Number(button.dataset.index) : null;
+    resultRanking = action === 'result-ranking';
     renderResult(); sheet.querySelector('#sheet-title')?.focus({ preventScroll: true });
   }
   else if (action === 'reassemble') {

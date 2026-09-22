@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { STAGES, createGame, validSavedGame } from '../engine.js';
+import { YAKU_HANDS, yakuFixture } from '../tests/yaku-fixtures.mjs';
 
 const fixtures = {};
 function fixture(stage, groups, pair, discards, status, trayCodes = []) {
@@ -27,7 +28,7 @@ fixtures.tutorial = fixture('shapes', [['m2','m3','m4'], ['m5','m5','m5']], null
 fixtures.river = fixture('tanyao', [['m2','m3','m4'], ['s5','s6','s7']], null, 36, 'playing');
 fixtures.river40 = fixture('tanyao', [], null, 40, 'playing');
 fixtures.river41 = fixture('tanyao', [], null, 41, 'playing');
-fixtures.lost = fixture('tanyao', [], null, 95, 'lost');
+fixtures.lost = fixture('tanyao', [], null, 123, 'lost');
 fixtures.sort = fixture('hand', [['m2','m3','m4']], null, 3, 'playing');
 fixtures.honors = fixture('honors', [], null, 0, 'playing');
 fixtures.intro = createGame('sequences', 4444);
@@ -44,7 +45,21 @@ fixtures.pending_chinitsu = fixture('chinitsu', [['m1','m2','m3'], ['m4','m5','m
 fixtures.pending_iipeikou = fixture('iipeikou', [['m1','m2','m3'], ['p4','p5','p6'], ['s7','s8','s9'], ['m8','m8','m8']], ['p9','p9'], 0, 'playing', ['m1','m2','m3']);
 fixtures.pending_toitoi = fixture('toitoi', [['m1','m1','m1'], ['p4','p5','p6'], ['s7','s7','s7'], ['m8','m8','m8']], ['p9','p9'], 0, 'playing', ['p2','p2','p2']);
 for (const stage of STAGES) fixtures[`layout_${stage.id}`] = createGame(stage.id, 1234);
-const assets = new Map([['/app.js','text/javascript'], ['/engine.js','text/javascript'], ['/styles.css','text/css'], ['/favicon.svg','image/svg+xml']]);
+for (const id of Object.keys(YAKU_HANDS)) {
+  fixtures[`result_${id}`] = yakuFixture(id);
+  const ready = yakuFixture(id);
+  ready.status = 'playing';
+  ready.discards.push(...ready.tray.splice(0, 2, ...ready.pair));
+  ready.pair = null;
+  fixtures[`finish_${id}`] = ready;
+}
+fixtures.maxbonus = yakuFixture('iipeikou', 50, [[['m1','m2','m3'], ['m1','m2','m3'], ['p1','p2','p3'], ['s1','s2','s3']], ['s9','s9']]);
+fixtures.legacy = structuredClone(fixtures.bonus);
+delete fixtures.legacy.rulesVersion;
+for (const field of ['wall','discards']) fixtures.legacy[field] = fixtures.legacy[field].filter(t => t.suit !== 'z');
+fixtures.legacy.tray = fixtures.legacy.tray.map(t => t?.suit === 'z' ? null : t);
+for (const [name, game] of Object.entries(fixtures)) if (!validSavedGame(game)) throw new Error(`Invalid fixture: ${name}`);
+const assets = new Map([['/app.js','text/javascript'], ['/engine.js','text/javascript'], ['/benchmark.js','text/javascript'], ['/benchmark-data.js','text/javascript'], ['/styles.css','text/css'], ['/favicon.svg','image/svg+xml']]);
 createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://127.0.0.1');
@@ -54,7 +69,7 @@ createServer(async (request, response) => {
       // Preview-only safe-area stand-ins; production still uses the device's env().
       const safeArea = url.searchParams.get('safe');
       if (safeArea === 'home' || safeArea === 'bottom') {
-        html = html.replace('</head>', `<style>.game-shell { padding-top:${safeArea === 'home' ? 47 : 8}px!important; padding-bottom:34px!important; }</style></head>`);
+        html = html.replace('</head>', `<style>.game-shell,.expanded .sheet-inner { padding-top:${safeArea === 'home' ? 47 : 8}px!important; padding-bottom:34px!important; }</style></head>`);
       }
       if (game) {
         const firstVisit = url.searchParams.get('case') === 'intro';
